@@ -7,3 +7,6 @@ __pycache__/
 # but ignore them here too in case WELLFOUND_MCP_DATA points inside it.
 data/
 *.db
+
+# Personal details: never commit.
+profile.md

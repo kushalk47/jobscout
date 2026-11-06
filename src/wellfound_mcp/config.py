@@ -25,5 +25,7 @@ MAX_DELAY = float(os.environ.get("WELLFOUND_MAX_DELAY", "7"))
 DAILY_APPLY_LIMIT = int(os.environ.get("WELLFOUND_DAILY_LIMIT", "15"))
 
 # Your background and standard answers, used to fill application forms.
-# Lives outside the repo by default because it holds personal details.
-PROFILE_PATH = Path(os.environ.get("WELLFOUND_PROFILE", DATA_DIR / "profile.md"))
+# Lives in the project root for easy editing; .gitignore keeps it out of git
+# because it holds personal details.
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROFILE_PATH = Path(os.environ.get("WELLFOUND_PROFILE", PROJECT_ROOT / "profile.md"))

@@ -39,10 +39,11 @@ can't find a library, install it with pacman.
 | `WELLFOUND_HEADLESS` | `0` | `1` hides the browser |
 | `WELLFOUND_MIN_DELAY` / `MAX_DELAY` | `3` / `7` | Random pause between page loads (seconds) |
 | `WELLFOUND_DAILY_LIMIT` | `15` | Max submissions per day |
-| `WELLFOUND_PROFILE` | `<data dir>/profile.md` | Your background and standard answers |
+| `WELLFOUND_PROFILE` | `./profile.md` (project root) | Your background and standard answers |
 
 The browser profile holds your logged-in session, so treat it like a password.
-`profile.md` holds personal details, which is why it lives outside the repo.
+`profile.md` holds personal details. It sits in the project root for easy editing,
+and `.gitignore` keeps it out of git.
 
 ## How answers work
 
