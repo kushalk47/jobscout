@@ -77,6 +77,14 @@ link, salary, location, time and your answers. Subjects start with
 If an alert fails to send, the application still counts; the tool result says
 the email failed.
 
+## Dashboard
+
+`uv run wellfound-mcp-dashboard` opens a local page at http://127.0.0.1:8765 with
+totals, today's usage against the daily cap, applications per day for the last 30
+days, the companies you applied to most, skip reasons, and a filterable list of every
+job. It only listens on your own machine and only reads the log. Set
+`WELLFOUND_DASHBOARD_PORT` to use another port.
+
 ## How answers work
 
 Claude reads `profile.md` once per session and answers form questions from it.
