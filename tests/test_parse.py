@@ -146,3 +146,10 @@ def test_apply_error_detects_limit():
     e2 = w.ApplyError("form didn't open", "Something else went wrong")
     assert not e2.limit_reached and str(e2) == "form didn't open" and e2.notice
 
+
+def test_parse_scheduled():
+    page = "Applications\nOngoing\nArchived\nNewton School\nDATA ANALYST\nScheduled\nUndo · 1:48\nAcme\nAI Engineer\nPending\n1 minute ago"
+    assert w.parse_scheduled(page) == [108]
+    assert w.parse_scheduled("Acme\nPending\n2 minutes ago") == []
+    assert w.parse_scheduled("A\nScheduled\nUndo · 4:38\nB\nScheduled\nUndo · 0:09") == [278, 9]
+    assert w.parse_scheduled("A\nScheduled\n") == [30]          # timer not readable: short wait

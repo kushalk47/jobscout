@@ -105,6 +105,25 @@ def _remember(job_id: str, job: dict) -> None:
                          "salary": job.get("salary"), "location": ", ".join(job.get("locations") or [])}
 
 
+async def _wait_for_scheduled() -> dict | None:
+    """Hold off while an earlier application is still in its undo window.
+    Returns None when it's fine to send, or an error dict asking to retry later."""
+    if not config.WAIT_FOR_SCHEDULED:
+        return None
+    waited = 0.0
+    while True:
+        left = await wellfound.scheduled_remaining(browser)
+        if left <= config.SCHEDULED_SLACK_S:
+            return None
+        if waited >= config.SCHEDULED_MAX_WAIT_S:
+            return {"submitted": False, "waiting": True, "retry_after_seconds": left,
+                    "error": f"The previous application is still scheduled ({left}s left). Call again after that."}
+        pause = min(left - config.SCHEDULED_SLACK_S + 2, 60, config.SCHEDULED_MAX_WAIT_S - waited)
+        logging.info("Previous application still scheduled (%ss left); waiting %.0fs", left, pause)
+        await asyncio.sleep(max(pause, 5))
+        waited += max(pause, 5)
+
+
 def _job_for_email(job_id: str) -> dict:
     return {**seen_jobs.get(job_id, {}), **_names(job_id), "id": job_id, "url": f"{config.BASE_URL}/jobs/{job_id}"}
 
@@ -238,6 +257,8 @@ async def submit_application(job_id: str, answers: dict[str, str], confirm: bool
         return {"error": f"Today's limit of {today['limit_today']} applications is reached. "
                          "It rises by 1 each day you apply without Wellfound blocking you.", **today}
     try:
+        if busy := await _wait_for_scheduled():
+            return {**busy, "job_id": job_id}
         await wellfound.submit(browser, job_id, answers)
     except (wellfound.ApplyError, BrowserError) as e:
         return {"submitted": False, **_apply_error(e, job_id)}

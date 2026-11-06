@@ -376,6 +376,34 @@ async def application_questions(browser: Browser, job_id: str) -> dict[str, Any]
     return {**form, "job": None if "error" in job else job}
 
 
+# ---------- the Applied page ----------
+#
+# After "Send application", Wellfound lists the application as "Scheduled" with
+# an "Undo · m:ss" countdown (5 minutes, seen Nov 2026); only then is it
+# delivered to the company and shown as "Pending".
+
+APPLIED_URL = f"{config.BASE_URL}/jobs/applications"
+
+
+def parse_scheduled(page_text: str) -> list[int]:
+    """Seconds left on each still-scheduled application's undo window."""
+    left = [int(m) * 60 + int(s) for m, s in re.findall(r"Scheduled\s*Undo\s*·\s*(\d+):(\d{2})", page_text)]
+    # A "Scheduled" card whose timer we can't read: assume a short wait rather than none.
+    unread = len(re.findall(r"\bScheduled\b", page_text)) - len(left)
+    return left + [30] * max(0, unread)
+
+
+async def scheduled_remaining(browser: Browser) -> int:
+    """Longest undo countdown still running on the Applied page (0 if none)."""
+    page = await browser.goto(APPLIED_URL)
+    try:
+        await page.wait_for_selector('[data-test="TabGroup-Tab--Ongoing"]', timeout=10_000)
+    except Exception:
+        pass
+    await asyncio.sleep(1.5)  # let the countdowns render
+    return max(parse_scheduled(await page.evaluate("document.body.innerText")), default=0)
+
+
 async def submit(browser: Browser, job_id: str, answers: dict[str, str]) -> None:
     """Fill the form and send it. Raises ApplyError unless Wellfound confirms."""
     page = await _open_application(browser, job_id)
