@@ -64,9 +64,9 @@ AUTO_APPLY = os.environ.get("WELLFOUND_AUTO_APPLY", "0") == "1"
 MAX_YEARS = float(os.environ.get("WELLFOUND_MAX_YEARS", "3"))
 MIN_SALARY_LPA = float(os.environ.get("WELLFOUND_MIN_SALARY_LPA", "4"))
 
-# Send one application at a time: before sending, wait until the previous one
+# Off by default. When on (=1), send one application at a time: wait until the previous one
 # has left Wellfound's 5-minute "Scheduled" (undo) window, give or take SLACK
 # seconds. One tool call waits at most MAX_WAIT seconds, then asks to retry.
-WAIT_FOR_SCHEDULED = os.environ.get("WELLFOUND_WAIT_FOR_SCHEDULED", "1") == "1"
+WAIT_FOR_SCHEDULED = os.environ.get("WELLFOUND_WAIT_FOR_SCHEDULED", "0") == "1"
 SCHEDULED_SLACK_S = int(os.environ.get("WELLFOUND_SCHEDULED_SLACK_S", "15"))
 SCHEDULED_MAX_WAIT_S = int(os.environ.get("WELLFOUND_SCHEDULED_MAX_WAIT_S", "330"))

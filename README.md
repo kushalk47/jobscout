@@ -105,11 +105,11 @@ its preview.
 
 ## Pacing and limits
 
-- **One application at a time.** After "Send application", Wellfound shows the application
-  as **Scheduled** with a 5-minute **Undo** button, then delivers it (status **Pending**).
-  The server waits for the previous one to leave Scheduled before sending the next, so you
-  always have the undo window. Undo any application from
-  [your Applied page](https://wellfound.com/jobs/applications).
+- **Undo window.** After "Send application", Wellfound shows the application as
+  **Scheduled** with a 5-minute **Undo** button, then delivers it (status **Pending**).
+  Undo any application from [your Applied page](https://wellfound.com/jobs/applications).
+  Set `WELLFOUND_WAIT_FOR_SCHEDULED=1` to send one at a time, each after the previous
+  one's window closes (off by default).
 - **Daily cap.** Starts at 5 a day, rises by 1 for each day you apply without Wellfound
   blocking you, up to 15, and drops back to 5 if Wellfound reports its limit.
 - **Wellfound's own limit.** Wellfound caps how many applications can be active at once
@@ -176,7 +176,7 @@ Put these in `.env` (gitignored) or the environment; real environment variables 
 | `WELLFOUND_MAX_YEARS` | `3` | Most experience a job may ask for |
 | `WELLFOUND_MIN_SALARY_LPA` | `4` | Lowest pay (in lakhs a year) when the job lists pay in rupees |
 | `WELLFOUND_DAILY_START` / `WELLFOUND_DAILY_LIMIT` | `5` / `15` | Daily cap: where it starts and how high it can rise |
-| `WELLFOUND_WAIT_FOR_SCHEDULED` | `1` | Wait for the previous application's undo window before sending |
+| `WELLFOUND_WAIT_FOR_SCHEDULED` | `0` | `1` waits for the previous application's undo window before sending the next |
 | `WELLFOUND_EMAIL_TO` | | Where alerts and reports go |
 | `WELLFOUND_SMTP_USER` | `WELLFOUND_EMAIL_TO` | Account that sends them |
 | `WELLFOUND_SMTP_PASSWORD` | | Gmail app password for that account |
