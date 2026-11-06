@@ -1,10 +1,8 @@
 """One shared, persistent Chromium session, opened lazily."""
 
 import asyncio
-import json
 import random
 import time
-from typing import Any
 
 from playwright.async_api import BrowserContext, Page, Playwright, async_playwright
 
@@ -17,6 +15,7 @@ class Browser:
         self._ctx: BrowserContext | None = None
         self._lock = asyncio.Lock()
         self._last_nav = 0.0
+        self.last_status: int | None = None
 
     async def page(self) -> Page:
         async with self._lock:
@@ -37,8 +36,9 @@ class Browser:
         wait = random.uniform(config.MIN_DELAY, config.MAX_DELAY) - (time.monotonic() - self._last_nav)
         if wait > 0:
             await asyncio.sleep(wait)
-        await page.goto(url, wait_until="domcontentloaded")
+        response = await page.goto(url, wait_until="domcontentloaded")
         self._last_nav = time.monotonic()
+        self.last_status = response.status if response else None
         return page
 
     async def close(self) -> None:
@@ -48,15 +48,3 @@ class Browser:
             await self._pw.stop()
         self._ctx = self._pw = None
 
-
-async def next_data(page: Page) -> dict[str, Any] | None:
-    """Return the page's embedded Next.js JSON, if it has any.
-
-    Wellfound appears to be a Next.js app. If its pages embed data in
-    <script id="__NEXT_DATA__">, parsing that is far sturdier than CSS
-    selectors. Verify against the live site before relying on it.
-    """
-    raw = await page.evaluate(
-        "() => document.getElementById('__NEXT_DATA__')?.textContent ?? null"
-    )
-    return json.loads(raw) if raw else None

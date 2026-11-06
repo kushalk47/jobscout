@@ -23,7 +23,7 @@ can't find a library, install it with pacman.
 |---|---|
 | `check_login` | Checks that the saved session is still logged in |
 | `search_jobs(role, location?, remote?, limit=10)` | Returns compact rows and marks jobs you've already handled |
-| `get_job(job_id)` | Returns requirements, stack, comp and a trimmed description |
+| `get_job(job_id)` | Returns requirements, stack, comp and a trimmed description. Takes the full id from search, like `4417481-software-engineer` |
 | `draft_application(job_id)` | Lists the form's questions. Nothing is submitted |
 | `submit_application(job_id, answers, confirm=false)` | Returns a preview, and only submits with `confirm=true` |
 | `list_applications(status?)` | Lists your local log of drafted and submitted jobs |
@@ -41,6 +41,12 @@ The browser profile holds your logged-in session, so treat it like a password.
 
 ## Status
 
-The MCP wiring, rate limiting, local log and approval gate all work.
-The Wellfound page parsing in `src/wellfound_mcp/wellfound.py` is still TODO
-and has to be written against the live site.
+Working against the live site: `check_login`, `search_jobs`, `get_job`, plus the
+rate limiting, local log and approval gate. Search reads the Next.js Apollo cache
+on `/role/...` pages, and job details come from the schema.org JSON-LD on
+`/jobs/<id>-<slug>` (an expired job returns 410).
+
+Not built yet: `draft_application` and `submit_application`. Seeing the apply form
+needs a logged-in session. The Apply button opens `?autoOpenApplication=true`.
+
+Run the parser tests with `uv run pytest`.
