@@ -30,7 +30,8 @@ PLACEHOLDER = re.compile(r"\[[^\]]*\]|\{[^}]*\}|<[^>]*>|\bTODO\b|\bTBD\b|\bXXX\b
 NUMBER = re.compile(r"(?<![\w.])\d[\d,]*(?:\.\d+)?")
 URL = re.compile(r"(?:https?://)?(?:[\w-]+\.)+(?:com|ai|io|in|org|dev|app|co|me|space|net)(?:/[^\s)]*)?", re.I)
 EMAIL = re.compile(r"[\w.+-]+@[\w-]+\.[\w.]+")
-WORD = re.compile(r"[A-Za-z][A-Za-z0-9+#&./-]*")
+# A word that starts on its own: "30M-parameter" is a number, not the name "M-parameter".
+WORD = re.compile(r"(?<![\w.~-])[A-Za-z][A-Za-z0-9+#&./-]*")
 # Capitalised words that are ordinary English, not claims.
 COMMON = {
     "i", "i'm", "i've", "i'd", "i'll", "my", "me", "the", "a", "an", "this", "that", "these", "those", "at",
@@ -41,6 +42,7 @@ COMMON = {
     "has", "had", "do", "does", "did", "can", "could", "would", "should", "will", "may", "might", "not",
     "no", "yes", "thank", "thanks", "hi", "hello", "dear", "best", "regards", "sincerely", "currently",
     "recently", "previously", "today", "beyond", "outside", "across", "through", "about", "into", "like",
+    "earlier", "later", "now", "finally", "first", "next", "together", "overall", "ideally", "happy",
 }
 
 
@@ -66,8 +68,11 @@ def fit(job: dict[str, Any]) -> dict[str, Any]:
     reasons = []
     yrs = _years(job.get("years"))
     if yrs is None:
-        # Some postings only state experience in the text, e.g. "3+ years developing ...".
-        found = [float(n) for n in re.findall(r"(\d+(?:\.\d+)?)\s*\+\s*(?:years|yrs)", job.get("description") or "", re.I)]
+        # Some postings only state experience in the text: "3+ years" or a range like
+        # "4–6 years". The lower bound of each is the minimum they ask for.
+        text = job.get("description") or ""
+        found = [float(n) for n in re.findall(r"(\d+(?:\.\d+)?)\s*\+\s*(?:years|yrs)", text, re.I)]
+        found += [float(n) for n in re.findall(r"(\d+(?:\.\d+)?)\s*(?:-|–|—|to)\s*\d+(?:\.\d+)?\s*\+?\s*(?:years|yrs)", text, re.I)]
         yrs = max(found) if found else None
     if yrs is not None and yrs > config.MAX_YEARS:
         reasons.append(f"Needs {yrs:g}+ years (limit {config.MAX_YEARS:g})")
@@ -101,6 +106,8 @@ def check(answers: dict[str, str], questions: list[dict], profile_text: str, job
     job_text += " " + " ".join(job.get("locations") or []) + " " + " ".join(job.get("stack") or [])
     allowed = _norm(profile_text + " " + job_text + " " + " ".join(q["question"] for q in questions))
     profile_links = _norm(profile_text)
+    # Links may point to the user's own pages (profile) or the employer's (posting).
+    known_links = profile_links + " " + _norm(job_text)
     by_key = {q["key"]: q for q in questions}
     issues: list[str] = []
 
@@ -124,8 +131,8 @@ def check(answers: dict[str, str], questions: list[dict], profile_text: str, job
                 issues.append(f"'{label}': email {e} isn't in the profile")
         for u in URL.findall(EMAIL.sub(" ", text)):
             bare = re.sub(r"^https?://(www\.)?", "", u.lower()).rstrip("/.")
-            if bare not in profile_links:
-                issues.append(f"'{label}': link {u} isn't in the profile")
+            if bare not in known_links:
+                issues.append(f"'{label}': link {u} isn't in the profile or posting")
         for w in WORD.findall(URL.sub(" ", EMAIL.sub(" ", text))):
             if not w[0].isupper():
                 continue

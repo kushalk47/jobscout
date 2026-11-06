@@ -38,6 +38,15 @@ def test_catches_invented_claims():
     assert not check("x" * 1600)["passed"]                                  # too long
 
 
+def test_no_false_alarms_on_ordinary_text():
+    job = {**JOB, "company": "timepay.ai"}
+    ok = ("timepay.ai is where I want to work. Earlier, I analysed 144,867 trips; "
+          "I'm pre-training a ~30M-parameter model.")
+    r = factcheck.check({"1": ok, "2": "github.com/rohxn08"}, QS, PROFILE + "\n- FLAME: ~30M params", job)
+    assert r["passed"], r["issues"]
+    assert not check(GOOD + " Earlier, at Google, I built it.")["passed"]   # names still checked
+
+
 def test_required_and_unknown_keys():
     assert not check(GOOD, a2="")["passed"]
     r = factcheck.check({"1": GOOD, "2": "github.com/rohxn08", "9": "hi"}, QS, PROFILE, JOB)
@@ -54,6 +63,9 @@ def test_fit_rules():
     assert factcheck.fit({**JOB, "years": "3+"})["ok"]                       # 3 is allowed
     assert not factcheck.fit({**JOB, "years": "4+"})["ok"]
     assert not factcheck.fit({**JOB, "description": "Needs 5+ years of SQL"})["ok"]
+    assert not factcheck.fit({**JOB, "description": "typically 4–6 years shipping software"})["ok"]
+    assert factcheck.fit({**JOB, "description": "Experience: 1–2 years in GenAI"})["ok"]
+    assert factcheck.fit({**JOB, "description": "2 to 3 years of Python"})["ok"]
     assert not factcheck.fit({**JOB, "salary": "₹3L – ₹3.6L"})["ok"]
     assert factcheck.fit({**JOB, "salary": "$20k – $25k"})["ok"]             # non-INR not judged
     assert not factcheck.fit({**JOB, "locations": ["Berlin"]})["ok"]
