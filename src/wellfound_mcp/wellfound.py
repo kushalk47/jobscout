@@ -13,16 +13,18 @@ What the pages look like (checked against the live site, Nov 2026):
   expired listings return 410.
 """
 
+import asyncio
 import html as htmllib
 import json
+import random
 import re
+from datetime import date
 from typing import Any
 from urllib.parse import quote
 
 from . import config
 from .browser import Browser
 
-NOT_READY = "Not implemented yet: Wellfound page parsing for this step still needs to be written."
 DESCRIPTION_CHARS = 1500
 SUMMARY_CHARS = 140
 PER_PAGE = 20
@@ -39,6 +41,7 @@ def _text(fragment: str) -> str:
     s = re.sub(r"<(br|/p|/li|/h\d|/div)[^>]*>", "\n", fragment, flags=re.I)
     s = re.sub(r"<li[^>]*>", "• ", s, flags=re.I)
     s = htmllib.unescape(re.sub(r"<[^>]+>", "", s))
+    s = re.sub(r"[\u200b\u200c\u200d\ufeff]", "", s)
     s = re.sub(r"[ \t\xa0]+", " ", s)
     return re.sub(r"\n\s*\n+", "\n", s).strip()
 
@@ -75,10 +78,15 @@ def _apollo(page_html: str) -> dict[str, Any]:
 
 def parse_logged_in(page_html: str) -> bool | None:
     """True/False from the Apollo viewer on a search page; None if not found."""
-    talent = _apollo(page_html).get("ROOT_QUERY", {}).get("talent", {})
-    viewer = talent.get("viewer")
+    a = _apollo(page_html)
+    viewer = a.get("ROOT_QUERY", {}).get("talent", {}).get("viewer")
+    if isinstance(viewer, dict) and "__ref" in viewer:
+        # Logged in: the viewer is a reference like "TalentViewer:<user id>".
+        viewer = a.get(viewer["__ref"], {})
+        return bool(viewer.get("id"))
     if not isinstance(viewer, dict) or "currentUser" not in viewer:
         return None
+    # Logged out: an inline viewer with id and currentUser set to null.
     return viewer["currentUser"] is not None
 
 
@@ -180,10 +188,11 @@ def _place(p: dict[str, Any]) -> str:
     return ", ".join(x for x in (a.get("addressLocality"), a.get("addressCountry")) if x)
 
 
-def parse_job(page_html: str, job_id: str) -> dict[str, Any]:
+def _parse_job_ld(page_html: str, job_id: str) -> dict[str, Any] | None:
+    """Logged-out job page: schema.org JSON-LD plus the sidebar."""
     d = _json_ld(page_html)
     if not d:
-        return {"error": "Could not find job data on the page.", "id": job_id}
+        return None
 
     header = re.search(r"<h1[^>]*>.*?</h1>\s*<ul[^>]*>\s*<li[^>]*>(.*?)</li>", page_html, re.S)
     comp = _text(header.group(1)) if header else ""
@@ -213,6 +222,51 @@ def parse_job(page_html: str, job_id: str) -> dict[str, Any]:
     }
 
 
+def _parse_job_apollo(page_html: str, job_id: str) -> dict[str, Any] | None:
+    """Logged-in job page: no JSON-LD, but a full JobListing in the Apollo cache."""
+    a = _apollo(page_html)
+    ref = next((v.get("__ref") for k, v in a.get("ROOT_QUERY", {}).items()
+                if k.startswith("jobListing(") and isinstance(v, dict)), None)
+    j = a.get(ref or "", {})
+    if not j.get("title"):
+        return None
+
+    def deref(x: Any) -> dict[str, Any]:
+        return a.get(x.get("__ref", ""), x) if isinstance(x, dict) else {}
+
+    remote_kind = deref(j.get("remoteConfig")).get("kind")
+    yrs = j.get("yearsExperienceMin")
+    started = j.get("liveStartAt")
+    desc = re.sub(r"\*\*|__", "", j.get("description") or "")
+    issues = (j.get("currentUserQualificationReport") or {}).get("errors") or []
+    return {
+        "id": job_id,
+        "title": j.get("title"),
+        "company": deref(j.get("startup")).get("name", "").strip() or None,
+        "url": f"{config.BASE_URL}/jobs/{job_id}",
+        "salary": htmllib.unescape(j.get("compensation") or "") or None,
+        "type": j.get("jobType"),
+        "remote": j.get("remote"),
+        "remote_policy": {"ONSITE": "In office", "REMOTE": "Remote only", "HYBRID": "Hybrid"}.get(remote_kind, remote_kind),
+        "locations": _dedupe(j.get("locationNames") or []),
+        "hires_in": j.get("acceptedRemoteLocationNames") or [],
+        "years": f"{yrs}+" if yrs else None,
+        "visa": "Available" if j.get("visaSponsorship") else "Not available",
+        "relocation": "Allowed" if j.get("allowRelocation") else "Not allowed",
+        "stack": [t.get("displayName") for t in map(deref, j.get("skills") or []) if t.get("displayName")],
+        "posted": date.fromtimestamp(started).isoformat() if started else None,
+        "apply_on_wellfound": j.get("source") == "PLATFORM" if j.get("source") else None,
+        # Wellfound's own eligibility check for this user; non-empty means it may block applying.
+        "eligibility_issues": [str(e.get("message", e)) if isinstance(e, dict) else str(e) for e in issues] or None,
+        "description": _trim(_text(desc), DESCRIPTION_CHARS),
+    }
+
+
+def parse_job(page_html: str, job_id: str) -> dict[str, Any]:
+    return (_parse_job_apollo(page_html, job_id) or _parse_job_ld(page_html, job_id)
+            or {"error": "Could not find job data on the page.", "id": job_id})
+
+
 async def get_job(browser: Browser, job_id: str) -> dict[str, Any]:
     if not re.fullmatch(r"\d+-[a-z0-9-]+", job_id):
         return {"error": "job_id must be the full id from search_jobs, like '4417481-software-engineer'."}
@@ -224,17 +278,107 @@ async def get_job(browser: Browser, job_id: str) -> dict[str, Any]:
     return parse_job(await page.content(), job_id)
 
 
-# ---------- applying (needs a logged-in session; not built yet) ----------
+# ---------- applying (logged in) ----------
+#
+# /jobs/<id>-<slug>?autoOpenApplication=true opens a modal whose <form> holds
+# one <label> per question, each wrapping a control named
+# customQuestionAnswers[<key>][answer]. A trailing "*" in the question marks it
+# required. An optional "Improve your odds" warning box sits above them.
+# Nothing is uploaded per application: Wellfound sends your profile.
 
-async def application_questions(browser: Browser, job_id: str) -> list[dict[str, Any]]:
-    # TODO: needs a logged-in session to inspect. The job page's Apply button
-    # goes to /jobs/<id>-<slug>?autoOpenApplication=true, which likely opens
-    # the dialog directly. List each field as
-    #   {"key", "label", "type": "text|textarea|select|checkbox", "required", "options"}
-    raise NotImplementedError(NOT_READY)
+SUBMIT_BUTTON = '[data-test="JobApplicationModal--SubmitButton"]'
+FIELD_NAME = "customQuestionAnswers[{key}][answer]"
+YES = {"yes", "y", "true", "1", "checked"}
+
+
+def parse_application(page_html: str) -> dict[str, Any] | None:
+    """Questions and warnings from the open apply modal, or None if it isn't open."""
+    i = page_html.find("JobApplicationModal--SubmitButton")
+    if i < 0:
+        return None
+    form = page_html[page_html.rfind("<form", 0, i):i]
+    first_label = form.find("<label")
+    head = form[:first_label] if first_label >= 0 else ""
+    # The warning box's <span> holds the actual message ("outside the years of experience...").
+    span = re.search(r"<span[^>]*>(.*?)</span>", head, re.S)
+    warning = _text(span.group(1) if span else head)
+
+    questions: dict[str, dict[str, Any]] = {}
+    for label in re.findall(r"<label[^>]*>(.*?)</label>", form, re.S):
+        ctl = re.search(r'<(input|textarea|select)\b([^>]*)name="customQuestionAnswers\[(\d+)\]\[answer\]"', label)
+        if not ctl:
+            continue
+        tag, attrs, key = ctl.groups()
+        q = _text(label[:ctl.start()])
+        kind = tag if tag != "input" else (re.search(r'type="(\w+)"', attrs + label[ctl.start():ctl.end()]) or [None, "text"])[1]
+        entry = questions.setdefault(key, {
+            "key": key, "question": q.rstrip("*").strip(), "type": kind,
+            "required": q.endswith("*"), "options": None,
+        })
+        if tag == "select":
+            sel = label[ctl.start():label.find("</select>", ctl.start())]
+            entry["options"] = [o for o in (_text(x) for x in re.findall(r"<option[^>]*>(.*?)</option>", sel, re.S)) if o]
+        elif kind == "radio":
+            val = re.search(r'value="([^"]*)"', label[ctl.start():])
+            entry["options"] = (entry["options"] or []) + [_text(label[label.find(">", ctl.end()) + 1:]) or (val[1] if val else "")]
+    return {"questions": list(questions.values()), "warnings": _trim(warning, 300) if warning else None}
+
+
+async def _open_application(browser: Browser, job_id: str):
+    page = await browser.goto(f"{config.BASE_URL}/jobs/{job_id}?autoOpenApplication=true")
+    if browser.last_status in (404, 410):
+        raise ApplyError("This job has expired or doesn't exist.")
+    try:
+        await page.wait_for_selector(SUBMIT_BUTTON, timeout=15_000)
+    except Exception:
+        raise ApplyError("The application form didn't open. You may have already applied, "
+                         "the job may apply on an external site, or you may need to log in again.") from None
+    return page
+
+
+class ApplyError(Exception):
+    pass
+
+
+async def application_questions(browser: Browser, job_id: str) -> dict[str, Any]:
+    page = await _open_application(browser, job_id)
+    form = parse_application(await page.content())
+    if form is None:
+        raise ApplyError("Could not read the application form.")
+    return form
 
 
 async def submit(browser: Browser, job_id: str, answers: dict[str, str]) -> None:
-    # TODO: open the apply dialog, fill each field by key, click submit,
-    # and confirm the success state appears. Raise if it does not.
-    raise NotImplementedError(NOT_READY)
+    """Fill the form and send it. Raises ApplyError unless Wellfound confirms."""
+    page = await _open_application(browser, job_id)
+    form = parse_application(await page.content())
+    if form is None:
+        raise ApplyError("Could not read the application form.")
+    by_key = {q["key"]: q for q in form["questions"]}
+    if unknown := set(answers) - set(by_key):
+        raise ApplyError(f"These keys aren't on the form (it may have changed): {sorted(unknown)}. Run draft_application again.")
+    if missing := [q["question"] for q in form["questions"] if q["required"] and not str(answers.get(q["key"], "")).strip()]:
+        raise ApplyError(f"Required questions have no answer: {missing}")
+
+    for key, answer in answers.items():
+        q, sel = by_key[key], f'[name="{FIELD_NAME.format(key=key)}"]'
+        if q["type"] == "select":
+            await page.select_option(sel, label=answer)
+        elif q["type"] == "radio":
+            await page.get_by_label(answer, exact=True).check()
+        elif q["type"] == "checkbox":
+            if answer.strip().lower() in YES:
+                await page.check(sel)
+        else:
+            await browser.type_like_human(page, sel, answer)
+
+    # Read it over, then click. Never retried: a retry could apply twice.
+    await asyncio.sleep(random.uniform(1.5, 4))
+    await browser.click_like_human(page, SUBMIT_BUTTON)
+    try:
+        # The modal closes once Wellfound accepts the application.
+        await page.wait_for_selector(SUBMIT_BUTTON, state="detached", timeout=20_000)
+    except Exception:
+        err = await page.evaluate(
+            "() => document.querySelector('.ReactModal__Content form')?.innerText?.slice(0, 400) ?? null")
+        raise ApplyError(f"Wellfound didn't confirm the submission. Form says: {err!r}") from None

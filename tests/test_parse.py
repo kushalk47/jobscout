@@ -59,6 +59,14 @@ def test_logged_in():
     assert w.parse_logged_in("<html></html>") is None
 
 
+def test_logged_in_viewer_ref():
+    apollo = {"ROOT_QUERY": {"talent": {"viewer": {"__ref": "TalentViewer:7"}}},
+              "TalentViewer:7": {"id": "7"}}
+    nd = {"props": {"pageProps": {"apolloState": {"data": apollo}}}}
+    page = f'<script id="__NEXT_DATA__" type="application/json">{json.dumps(nd)}</script>'
+    assert w.parse_logged_in(page) is True
+
+
 def test_search_url():
     assert w.search_url("Software Engineer", None, True) == "https://wellfound.com/role/r/software-engineer"
     assert w.search_url("ML Engineer", "New York", False, 2) == "https://wellfound.com/role/l/ml-engineer/new-york?page=2"
@@ -78,3 +86,55 @@ def test_parse_job():
 
 def test_parse_job_missing():
     assert "error" in w.parse_job("<html></html>", "x")
+
+
+APPLY_FORM = """<div class="ReactModal__Content" role="dialog"><form class="">
+<div class="fieldError"><div class="font-bold">Improve your odds</div><span>It seems you’re outside the years of experience preferred for this role (5+ years)</span><div>Indicate how...</div></div>
+<div class="mb-2"><label for="form-input--undefined"><div><div>What interests you about working for this company?</div></div>
+<div><textarea id="a" name="customQuestionAnswers[332035][answer]" rows="4"></textarea></div></label></div>
+<div class="mb-2"><label for="form-input--undefined"><div><div>Experience in Generative AI (out of 5)<span>*</span></div></div>
+<div><input type="text" id="b" name="customQuestionAnswers[150118][answer]" value=""></div></label></div>
+<button data-test="Button" type="button">Cancel</button><button data-test="JobApplicationModal--SubmitButton" type="submit">Send application</button>
+</form></div>"""
+
+
+def test_parse_application():
+    form = w.parse_application(APPLY_FORM)
+    assert form["warnings"].startswith("It seems you’re outside")
+    q1, q2 = form["questions"]
+    assert q1 == {"key": "332035", "question": "What interests you about working for this company?",
+                  "type": "textarea", "required": False, "options": None}
+    assert q2["key"] == "150118" and q2["type"] == "text" and q2["required"] is True
+    assert q2["question"] == "Experience in Generative AI (out of 5)"
+    assert w.parse_application("<html>no modal</html>") is None
+
+
+def test_parse_job_logged_in():
+    apollo = {
+        "ROOT_QUERY": {'jobListing({"id":"5","slug":"ai"})': {"__ref": "JobListing:5"}},
+        "JobListing:5": {
+            "title": "AI Engineer", "startup": {"__ref": "Startup:1"}, "compensation": "₹10L – ₹15L",
+            "jobType": "full_time", "remote": False, "remoteConfig": {"__ref": "RC:1"},
+            "locationNames": ["Bengaluru"], "yearsExperienceMin": 3, "visaSponsorship": False,
+            "allowRelocation": True, "skills": [{"__ref": "NewTag:1"}], "liveStartAt": 1787638107,
+            "source": "PLATFORM", "currentUserQualificationReport": {"errors": []},
+            "description": "​**About Us**\nWe build things.",
+        },
+        "Startup:1": {"name": "Acme "}, "RC:1": {"kind": "ONSITE"}, "NewTag:1": {"displayName": "Python"},
+    }
+    nd = {"props": {"pageProps": {"apolloState": {"data": apollo}}}}
+    j = w.parse_job(f'<script id="__NEXT_DATA__" type="application/json">{json.dumps(nd)}</script>', "5-ai")
+    assert j["company"] == "Acme" and j["salary"] == "₹10L – ₹15L"
+    assert j["remote_policy"] == "In office" and j["years"] == "3+"
+    assert j["visa"] == "Not available" and j["relocation"] == "Allowed"
+    assert j["stack"] == ["Python"] and j["apply_on_wellfound"] is True
+    assert j["eligibility_issues"] is None
+    assert j["description"].startswith("About Us")
+
+
+def test_typing_chunks_keep_text_exact():
+    from wellfound_mcp.browser import _chunks
+    text = "Hi  there,\nI build voice agents and RAG systems.   Happy to chat!\n\n- Rohan"
+    for _ in range(20):
+        parts = _chunks(text)
+        assert "".join(parts) == text and all(parts)

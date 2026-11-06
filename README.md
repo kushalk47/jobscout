@@ -11,7 +11,7 @@ cd ~/DEV/wellfound-mcp
 uv sync
 uv run playwright install chromium
 cp profile.example.md profile.md      # then fill in profile.md
-uv run wellfound-mcp-login            # log in by hand once, press Enter
+uv run wellfound-mcp-login            # log in inside the window it opens; it closes itself
 claude mcp add wellfound -- uv run --directory ~/DEV/wellfound-mcp wellfound-mcp
 ```
 
@@ -47,6 +47,15 @@ session (treat it like a password) and the application log, and `profile.md` hol
 your personal details. `.gitignore` keeps both out of git; only the blank
 `profile.example.md` is committed.
 
+## Pacing and retries
+
+Every page load waits a random 3–7s, then scrolls and moves the mouse a little.
+Answers are typed with uneven keystroke timing, and the mouse moves to a button
+before clicking it. Page loads that fail (network errors, 429, 5xx) are retried up
+to 3 times with backoff. If Cloudflare shows a check, the server waits up to 2
+minutes for you to clear it in the browser window. "Send application" is never
+retried, because a retry could apply twice.
+
 ## How answers work
 
 Claude reads `profile.md` once per session and answers form questions from it.
@@ -55,12 +64,20 @@ save your answer with `save_answer`, so each new question only comes up once.
 
 ## Status
 
-Working against the live site: `check_login`, `search_jobs`, `get_job`, plus the
-rate limiting, local log and approval gate. Search reads the Next.js Apollo cache
-on `/role/...` pages, and job details come from the schema.org JSON-LD on
-`/jobs/<id>-<slug>` (an expired job returns 410).
+Working against the live site (Nov 2026): login check, search, job details, reading
+the application form, the submit preview, skipping and the local log.
 
-Not built yet: `draft_application` and `submit_application`. Seeing the apply form
-needs a logged-in session. The Apply button opens `?autoOpenApplication=true`.
+- Search reads the Next.js Apollo cache on `/role/...` pages.
+- Job details come from the Apollo cache when logged in (visa, relocation, skills,
+  equity, Wellfound's eligibility check), or from JSON-LD when logged out.
+- The apply form opens at `/jobs/<id>-<slug>?autoOpenApplication=true`. Each
+  question is a field named `customQuestionAnswers[<key>][answer]`, and a trailing
+  `*` marks it required. Wellfound attaches your Wellfound profile itself, so
+  nothing is uploaded per application.
+
+Not yet seen live: the moment after "Send application". `submit` treats the form
+closing as success and reports an error otherwise. Watch the first real submission.
+Only text and textarea questions have been seen so far; select, radio and checkbox
+handling is written but untested.
 
 Run the parser tests with `uv run pytest`.
