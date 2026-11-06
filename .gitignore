@@ -9,3 +9,4 @@ data/
 *.db
 profile.md
 .env
+.vscode/
