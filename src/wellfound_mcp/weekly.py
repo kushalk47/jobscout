@@ -32,12 +32,14 @@ def build(today: date | None = None) -> EmailMessage:
     sent = [r for r in in_week if r["status"] == "submitted"]
     skipped = [r for r in in_week if r["status"] == "skipped"]
     pending = [r for r in s["rows"] if r["status"] == "drafted"]
+    held = [r for r in s["rows"] if r["status"] == "held"]
     span = f"{start:%d %b} – {today:%d %b %Y}"
 
     lines = [f"Your Wellfound week, {span}", ""]
     lines += [f"Applied this week:   {len(sent)}",
               f"Applied in total:    {s['totals']['submitted']}",
               f"Skipped this week:   {len(skipped)}",
+              f"Held for review:     {len(held)}",
               f"Drafted, not sent:   {len(pending)}",
               f"Daily cap now:       {s['cap']['limit_today']} (max {s['cap_max']})"]
 
@@ -48,6 +50,12 @@ def build(today: date | None = None) -> EmailMessage:
                       f"              {r['url']}"]
     else:
         lines += ["", "No applications sent this week."]
+
+    if held:
+        lines += ["", "Held for your review (not sent)"]
+        for r in held[:10]:
+            lines += [f"  {r['title'] or r['job_id']} at {r['company'] or '?'}  ({r['notes'] or 'no reason'})",
+                      f"              {r['url']}"]
 
     if pending:
         lines += ["", "Drafted but not sent (finish or skip these)"]

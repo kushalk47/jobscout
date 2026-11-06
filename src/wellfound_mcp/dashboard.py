@@ -42,6 +42,7 @@ def stats() -> dict:
             "this_week": sum(n for d, n in per_day.items() if d >= week_start),
             "drafted": sum(r["status"] == "drafted" for r in rows),
             "skipped": sum(r["status"] == "skipped" for r in rows),
+            "held": sum(r["status"] == "held" for r in rows),
         },
         "cap": store.daily_limit() if config.DB_PATH.exists() else {"submitted_today": 0, "limit_today": config.DAILY_START},
         "cap_max": config.DAILY_MAX,
@@ -154,7 +155,7 @@ td.date { white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--
 a { color: var(--link); }
 .status { display: inline-flex; align-items: center; gap: 6px; }
 .status::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--dot); }
-.status.submitted { --dot: var(--good); } .status.drafted { --dot: var(--warning); } .status.skipped { --dot: var(--text-muted); }
+.status.submitted { --dot: var(--good); } .status.drafted { --dot: var(--warning); } .status.skipped { --dot: var(--text-muted); } .status.held { --dot: #d03b3b; }
 .empty { padding: 24px; text-align: center; color: var(--text-muted); }
 </style>
 </head>
@@ -204,8 +205,8 @@ function tiles(d) {
     <div class="card tile"><div class="label">Applied today</div><div class="value">${cap.submitted_today} <span class="muted" style="font-size:16px">of ${cap.limit_today}</span></div>
       <div class="meter" role="img" aria-label="${cap.submitted_today} of ${cap.limit_today} used today"><div style="width:${pct}%"></div></div>
       <div class="sub">Cap rises by 1 per clean day, up to ${d.cap_max}</div></div>
-    <div class="card tile"><div class="label">Drafted, not sent</div><div class="value">${t.drafted}</div>
-      <div class="sub">Forms opened but not submitted</div></div>
+    <div class="card tile"><div class="label">Held for your review</div><div class="value">${t.held}</div>
+      <div class="sub">${t.drafted} more drafted, not sent</div></div>
     <div class="card tile"><div class="label">Skipped</div><div class="value">${t.skipped}</div>
       <div class="sub">Hidden from search</div></div>`;
 }
@@ -273,7 +274,7 @@ function table() {
 function filters() {
   const counts = {all: data.rows.length};
   data.rows.forEach(r => counts[r.status] = (counts[r.status] || 0) + 1);
-  $("filters").innerHTML = ["all", "submitted", "drafted", "skipped"].map(s =>
+  $("filters").innerHTML = ["all", "submitted", "held", "drafted", "skipped"].map(s =>
     `<button data-s="${s}" aria-pressed="${s === filter}">${s[0].toUpperCase() + s.slice(1)} (${counts[s] || 0})</button>`).join("");
   $("filters").onclick = e => { const b = e.target.closest("button"); if (!b) return; filter = b.dataset.s; filters(); table(); };
 }

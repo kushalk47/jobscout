@@ -13,7 +13,7 @@ def test_stats(tmp_path, monkeypatch):
     store.record("3-c", "skipped", title="SWE", company="Beta", notes="Needs 5+ years")
     store.record("4-d", "drafted", title="CV Engineer", company="Gamma")
     s = dashboard.stats()
-    assert s["totals"] == {"submitted": 2, "this_week": 2, "drafted": 1, "skipped": 1}
+    assert s["totals"] == {"submitted": 2, "this_week": 2, "drafted": 1, "skipped": 1, "held": 0}
     assert s["per_day"][-1] == {"day": s["today"], "count": 2} and len(s["per_day"]) == 30
     assert s["top_companies"] == [("Acme", 2)]
     assert s["skip_reasons"] == [("Needs 5+ years", 1)]
