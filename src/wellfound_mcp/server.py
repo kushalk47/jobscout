@@ -3,11 +3,13 @@
 Talks to Claude over stdio, so never print() to stdout here. Log to stderr.
 """
 
+import asyncio
+import functools
+import inspect
+import json
 import logging
 import sys
 from contextlib import asynccontextmanager
-
-import asyncio
 
 from mcp.server.fastmcp import FastMCP
 
@@ -34,10 +36,51 @@ async def lifespan(_server: FastMCP):
         await browser.close()
 
 
-mcp = FastMCP("wellfound", lifespan=lifespan)
+# Workflow guidance lives here once, instead of being repeated in every tool description.
+INSTRUCTIONS = (
+    "Wellfound job applications. Flow: get_profile once; search_jobs; get_job (check fit.ok, "
+    "skip_job the misfits with the fit reasons); draft_application (questions + description); "
+    "write answers ONLY from the profile; fact_check; then submit_application, or "
+    "hold_application if anything fails or you're unsure. Never invent facts. "
+    + ("AUTO MODE ON: the user gave standing permission to submit and skip without asking, but only "
+       "jobs with fit.ok and answers that passed fact_check after your own sentence-by-sentence review."
+       if config.AUTO_APPLY else
+       "Manual mode: show the submit preview and send with confirm=true only after the user approves it; "
+       "skip_job also needs the user's OK.")
+)
+mcp = FastMCP("wellfound", instructions=INSTRUCTIONS, lifespan=lifespan)
 
-AUTO_SUBMIT_DOC = "Submit an application. answers maps each question `key` from draft_application to\nthe answer text. AUTO MODE IS ON: the user has given standing permission to send without asking,\nbut ONLY when (1) get_job's `fit.ok` is true, (2) you reviewed every sentence against the profile\nand are confident it is accurate and well written, and (3) fact_check passed on these exact answers.\nThe server refuses confirm=True otherwise. If you are unsure about anything, call hold_application\ninstead. confirm=False returns a preview."
-MANUAL_SUBMIT_DOC = 'Submit an application. answers maps each question `key` from draft_application to\nthe answer text. With confirm=False (default) this only returns a preview. Only call it with\nconfirm=True after the user has explicitly approved this exact preview.'
+
+def _lean(x):
+    """Drop None and empty strings so results stay small."""
+    if isinstance(x, dict):
+        return {k: _lean(v) for k, v in x.items() if v is not None and v != ""}
+    if isinstance(x, list):
+        return [_lean(v) for v in x]
+    return x
+
+
+def tool(description: str | None = None):
+    """Register a tool whose result goes back as ONE compact JSON text block.
+
+    By default FastMCP indents JSON, splits lists into one block per item, and
+    for some return types sends the data a second time as structured content.
+    """
+    def deco(fn):
+        @functools.wraps(fn)
+        async def wrapper(*args, **kwargs):
+            result = fn(*args, **kwargs)
+            if inspect.isawaitable(result):
+                result = await result
+            return json.dumps(_lean(result), ensure_ascii=False, separators=(",", ":"))
+        wrapper.__signature__ = inspect.signature(fn).replace(return_annotation=str)
+        wrapper.__annotations__ = {**fn.__annotations__, "return": str}
+        return mcp.tool(description=description or inspect.getdoc(fn), structured_output=False)(wrapper)
+    return deco
+
+
+AUTO_SUBMIT_DOC = "Send an application (answers keyed by question key). Auto mode: confirm=true only if fit.ok and fact_check passed on these exact answers; the server enforces it. confirm=false previews."
+MANUAL_SUBMIT_DOC = "Send an application (answers keyed by question key). confirm=false previews; confirm=true only after the user approves that exact preview."
 
 
 def _names(job_id: str) -> dict:
@@ -54,9 +97,9 @@ def _apply_error(e: Exception, job_id: str) -> dict:
     return {k: v for k, v in out.items() if v is not None}
 
 
-@mcp.tool()
+@tool()
 async def check_login() -> dict:
-    """Check whether the saved browser session is logged in to Wellfound."""
+    """Is the saved Wellfound session logged in?"""
     try:
         ok = await wellfound.is_logged_in(browser)
     except BrowserError as e:
@@ -64,25 +107,22 @@ async def check_login() -> dict:
     return {"logged_in": ok, "hint": None if ok else "Run `uv run wellfound-mcp-login` and sign in."}
 
 
-@mcp.tool()
+@tool()
 def get_profile() -> dict:
-    """Read the user's profile.md (background and standard answers). Call once per
-    session before drafting answers. If a form asks something the profile doesn't
-    cover, ask the user; never invent an answer."""
+    """The user's profile.md. Read once per session; answer only from it."""
     return profile.read()
 
 
-@mcp.tool()
+@tool()
 def save_answer(question: str, answer: str) -> dict:
-    """Append an answer the user gave to profile.md, so the question is covered next
-    time. Only call after the user agrees to save it."""
+    """Append an answer the user gave to profile.md. Only with their OK."""
     return profile.save_answer(question, answer)
 
 
-@mcp.tool()
-async def search_jobs(role: str, location: str | None = None, remote: bool = False, limit: int = 10) -> dict:
-    """Search Wellfound jobs. Returns compact rows (id, title, company, salary, one-line summary).
-    Jobs the user skipped are hidden; jobs already drafted or applied to are marked."""
+@tool()
+async def search_jobs(role: str, location: str | None = None, remote: bool = False, limit: int = 10,
+                      summaries: bool = False) -> dict:
+    """Search jobs. Hides skipped ones; marks drafted/held/submitted. summaries=true adds a one-line summary per job."""
     try:
         rows = await wellfound.search_jobs(browser, role, location, remote, min(limit, 25))
     except BrowserError as e:
@@ -90,6 +130,8 @@ async def search_jobs(role: str, location: str | None = None, remote: bool = Fal
     out, hidden = [], 0
     for r in rows:
         seen_jobs[r["id"]] = r
+        if not summaries:
+            r = {k: v for k, v in r.items() if k != "summary"}
         if seen := store.get(r["id"]):
             if seen["status"] == "skipped":
                 hidden += 1
@@ -128,28 +170,22 @@ def _job_for_email(job_id: str) -> dict:
     return {**seen_jobs.get(job_id, {}), **_names(job_id), "id": job_id, "url": f"{config.BASE_URL}/jobs/{job_id}"}
 
 
-@mcp.tool()
-async def get_job(job_id: str) -> dict:
-    """Get one job's details: requirements, stack, compensation, trimmed description, and
-    `fit`: whether it meets the user's rules (<= max years, pay floor, India or visa, applied on
-    Wellfound). Never apply when fit.ok is false; skip it with the reasons instead."""
+@tool()
+async def get_job(job_id: str, full: bool = False) -> dict:
+    """Job details and fit (rules: <=3 yrs, pay floor, India or visa, applies on Wellfound). full=true adds the description."""
     try:
         job = await wellfound.get_job(browser, job_id)
     except BrowserError as e:
         return {"error": str(e), "job_id": job_id}
     if "error" not in job:
         _remember(job_id, job)
-        job["fit"] = factcheck.fit(job)
+        job["fit"] = factcheck.fit(job)          # uses the description, so check before trimming
+        if not full:
+            job = {k: v for k, v in job.items() if k != "description"}
     return job
 
 
-@mcp.tool(description=(
-    "Mark jobs as not interesting so search hides them. "
-    + ("Auto mode is on: you may call confirm=True directly for jobs whose fit.ok is false, "
-       "using the fit reasons as `reason`. " if config.AUTO_APPLY else
-       "With confirm=False (default) this only returns a preview: show it to the user and call "
-       "again with confirm=True only if they approve. ")
-    + "undo=True un-skips the given jobs instead."))
+@tool(description="Skip jobs so search hides them (reason recommended). confirm=false previews. undo=true un-skips.")
 def skip_job(job_ids: list[str], reason: str = "", confirm: bool = False, undo: bool = False) -> dict:
     if undo:
         if not confirm:
@@ -171,11 +207,9 @@ def skip_job(job_ids: list[str], reason: str = "", confirm: bool = False, undo: 
     return {"skipped": todo, "not_skippable_already_applied": applied or None}
 
 
-@mcp.tool()
+@tool()
 async def draft_application(job_id: str) -> dict:
-    """Open a job's application form and list its questions. Nothing is submitted.
-    Answer each question only from the profile (get_profile). Then run fact_check on the
-    answers before submit_application. Answers are keyed by each question's `key`."""
+    """Open the apply form: questions (answer by key), warnings, fit and the job description. Sends nothing."""
     if (seen := store.get(job_id)) and seen["status"] == "submitted":
         return {"error": "Already applied to this job.", "on": seen["updated_at"]}
     try:
@@ -190,16 +224,13 @@ async def draft_application(job_id: str) -> dict:
     store.record(job_id, "drafted", url=f"{config.BASE_URL}/jobs/{job_id}", **_names(job_id))
     return {"job_id": job_id, **_names(job_id), **form,
             "fit": factcheck.fit(job) if job else None,
+            "description": (job or {}).get("description", "")[:1000] or None,
             "note": "Wellfound sends the user's Wellfound profile with the application; only these questions are filled here."}
 
 
-@mcp.tool()
+@tool()
 def fact_check(job_id: str, answers: dict[str, str]) -> dict:
-    """Check drafted answers against profile.md and the job posting: every number, capitalised
-    name (employer, project, tool, place), link and email must appear there; no placeholders;
-    required questions answered; length limits. It can't tell whether true facts are combined
-    correctly (e.g. a project credited to the wrong employer); that part is your own review.
-    If it fails, fix the answer from the profile and re-check, or hold_application."""
+    """Check answers: every number, capitalised name, link and email must be in the profile or posting. Can't catch true facts paired wrongly; that's your review."""
     questions = drafts.get(job_id)
     if questions is None:
         return {"error": "Run draft_application for this job first."}
@@ -214,11 +245,9 @@ def fact_check(job_id: str, answers: dict[str, str]) -> dict:
     return {"passed": result["passed"], "issues": result["issues"] or None}
 
 
-@mcp.tool()
+@tool()
 async def hold_application(job_id: str, answers: dict[str, str], reason: str) -> dict:
-    """Don't send; keep the draft for the user and email them an alert with the draft and
-    `reason`. Use whenever fact_check fails and you can't fix it from the profile, the form
-    asks something the profile doesn't cover, or you're not confident the answer is right."""
+    """Don't send; log it as held and email the user the draft and reason."""
     questions = drafts.get(job_id, [])
     rows = [{"question": q["question"], "answer": answers.get(q["key"], "")} for q in questions]
     store.record(job_id, "held", notes=reason, url=f"{config.BASE_URL}/jobs/{job_id}", **_names(job_id))
@@ -226,7 +255,7 @@ async def hold_application(job_id: str, answers: dict[str, str], reason: str) ->
     return {"held": True, "job_id": job_id, **_names(job_id), "email_alert": email}
 
 
-@mcp.tool(description=AUTO_SUBMIT_DOC if config.AUTO_APPLY else MANUAL_SUBMIT_DOC)
+@tool(description=AUTO_SUBMIT_DOC if config.AUTO_APPLY else MANUAL_SUBMIT_DOC)
 async def submit_application(job_id: str, answers: dict[str, str], confirm: bool = False) -> dict:
     if (seen := store.get(job_id)) and seen["status"] == "submitted":
         return {"error": "Already applied to this job.", "on": seen["updated_at"]}
@@ -269,10 +298,9 @@ async def submit_application(job_id: str, answers: dict[str, str], confirm: bool
     return {"submitted": True, "job_id": job_id, **_names(job_id), "email_alert": email}
 
 
-@mcp.tool()
+@tool()
 def list_applications(status: str | None = None, limit: int = 50) -> list[dict]:
-    """List jobs from the local log. status: drafted | submitted | skipped | held.
-    Use status="skipped" or "held" to let the user review those."""
+    """Local log. status: submitted | held | drafted | skipped."""
     return store.list_all(status, limit)
 
 
