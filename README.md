@@ -10,6 +10,7 @@ sudo pacman -S uv
 cd ~/DEV/wellfound-mcp
 uv sync
 uv run playwright install chromium
+cp profile.example.md profile.md      # then fill in profile.md
 uv run wellfound-mcp-login            # log in by hand once, press Enter
 claude mcp add wellfound -- uv run --directory ~/DEV/wellfound-mcp wellfound-mcp
 ```
@@ -22,7 +23,7 @@ can't find a library, install it with pacman.
 | Tool | What it does |
 |---|---|
 | `check_login` | Checks that the saved session is still logged in |
-| `get_profile` | Reads `profile.md` (created blank the first time) |
+| `get_profile` | Reads `profile.md` (copy it from `profile.example.md`) |
 | `save_answer(question, answer)` | Adds an answer you gave to `profile.md`, so it isn't asked again |
 | `search_jobs(role, location?, remote?, limit=10)` | Returns compact rows, hides skipped jobs and marks ones you've drafted or applied to |
 | `get_job(job_id)` | Returns requirements, stack, comp and a trimmed description. Takes the full id from search, like `4417481-software-engineer` |
@@ -35,15 +36,16 @@ can't find a library, install it with pacman.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `WELLFOUND_MCP_DATA` | `~/.local/share/wellfound-mcp` | Browser profile and SQLite log |
+| `WELLFOUND_MCP_DATA` | `./data` (project folder) | Browser profile and SQLite log |
 | `WELLFOUND_HEADLESS` | `0` | `1` hides the browser |
 | `WELLFOUND_MIN_DELAY` / `MAX_DELAY` | `3` / `7` | Random pause between page loads (seconds) |
 | `WELLFOUND_DAILY_LIMIT` | `15` | Max submissions per day |
 | `WELLFOUND_PROFILE` | `./profile.md` (project root) | Your background and standard answers |
 
-The browser profile holds your logged-in session, so treat it like a password.
-`profile.md` holds personal details. It sits in the project root for easy editing,
-and `.gitignore` keeps it out of git.
+Everything stays inside the project folder. `data/` holds your logged-in browser
+session (treat it like a password) and the application log, and `profile.md` holds
+your personal details. `.gitignore` keeps both out of git; only the blank
+`profile.example.md` is committed.
 
 ## How answers work
 

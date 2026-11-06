@@ -3,10 +3,8 @@ __pycache__/
 *.pyc
 .ruff_cache/
 .pytest_cache/
-# Browser profile and application log live outside the repo by default,
-# but ignore them here too in case WELLFOUND_MCP_DATA points inside it.
+# Private: your logged-in browser profile, application log and personal
+# details. Never commit these. (profile.example.md is the blank template.)
 data/
 *.db
-
-# Personal details: never commit.
 profile.md

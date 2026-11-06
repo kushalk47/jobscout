@@ -3,13 +3,14 @@
 import os
 from pathlib import Path
 
-from platformdirs import user_data_dir
-
 BASE_URL = "https://wellfound.com"
 
-# ~/.local/share/wellfound-mcp by default. Holds your logged-in browser
-# profile (treat it like a password) and the local application log.
-DATA_DIR = Path(os.environ.get("WELLFOUND_MCP_DATA", user_data_dir("wellfound-mcp")))
+# Everything lives inside the project folder, and private files are gitignored.
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+# ./data by default. Holds your logged-in browser profile (treat it like a
+# password) and the local application log.
+DATA_DIR = Path(os.environ.get("WELLFOUND_MCP_DATA", PROJECT_ROOT / "data"))
 PROFILE_DIR = DATA_DIR / "browser-profile"
 DB_PATH = DATA_DIR / "applications.db"
 
@@ -25,7 +26,6 @@ MAX_DELAY = float(os.environ.get("WELLFOUND_MAX_DELAY", "7"))
 DAILY_APPLY_LIMIT = int(os.environ.get("WELLFOUND_DAILY_LIMIT", "15"))
 
 # Your background and standard answers, used to fill application forms.
-# Lives in the project root for easy editing; .gitignore keeps it out of git
-# because it holds personal details.
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+# Copy profile.example.md to profile.md and fill it in. Gitignored, because it
+# holds personal details.
 PROFILE_PATH = Path(os.environ.get("WELLFOUND_PROFILE", PROJECT_ROOT / "profile.md"))
