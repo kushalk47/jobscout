@@ -10,3 +10,4 @@ data/
 profile.md
 .env
 .vscode/
+.claude/settings.local.json

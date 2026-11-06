@@ -70,6 +70,28 @@ It runs on your computer, so it works from Claude Code here, not from claude.ai 
 Don't run `wellfound-mcp-login` while Claude Code has the server running: Chromium can't
 open the same profile twice.
 
+## Run a batch automatically at login
+
+`scripts/daily-apply.sh` starts Claude Code with the batch instructions in
+`scripts/daily-prompt.md`, at most once a day (it records the date in `data/last-daily-run`;
+`--force` runs it again). To start it whenever you log in (example for Hyprland's Lua config):
+
+1. `.vscode/tasks.json` (local, gitignored): a task that runs the script when the folder opens.
+   ```json
+   {"version": "2.0.0", "tasks": [{"label": "Daily Wellfound batch", "type": "shell",
+     "command": "${workspaceFolder}/scripts/daily-apply.sh",
+     "runOptions": {"runOn": "folderOpen"}, "problemMatcher": []}]}
+   ```
+2. `.vscode/settings.json`: `"task.allowAutomaticTasks": "on"`.
+3. `.claude/settings.local.json` (gitignored), so the batch doesn't stop at a permission
+   prompt for each Wellfound tool: `{"permissions": {"allow": ["mcp__wellfound"]}}`.
+4. Open VS Code on a spare workspace at login, e.g. in `~/.config/hypr/config/autostart.lua`
+   inside the `hyprland.start` block:
+   `hl.exec_cmd("sleep 8; hyprctl dispatch exec '[workspace 9 silent] code ~/DEV/wellfound-mcp'")`
+
+The batch runs in VS Code's terminal, so you can watch or step in. Only your first login of
+the day starts one.
+
 ## Tools
 
 | Tool | What it does |
