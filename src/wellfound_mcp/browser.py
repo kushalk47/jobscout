@@ -8,6 +8,7 @@ check in the visible window. Submitting is never retried (see wellfound.submit).
 
 import asyncio
 import logging
+import os
 import random
 import re
 import time
@@ -46,6 +47,21 @@ class BrowserError(Exception):
     pass
 
 
+def ensure_display() -> None:
+    """Find the desktop for the visible browser when the environment doesn't say.
+
+    MCP clients often start servers with a trimmed environment that drops
+    DISPLAY, so Chromium can't open a window. Fall back to the local X server
+    (which XWayland also provides) when its socket exists.
+    """
+    if config.HEADLESS or os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"):
+        return
+    sockets = sorted(p for p in os.listdir("/tmp/.X11-unix") if p[1:].isdigit()) if os.path.isdir("/tmp/.X11-unix") else []
+    if sockets:
+        os.environ["DISPLAY"] = f":{sockets[0][1:]}"
+        log.info("DISPLAY wasn't set; using %s", os.environ["DISPLAY"])
+
+
 class Browser:
     def __init__(self) -> None:
         self._pw: Playwright | None = None
@@ -58,13 +74,26 @@ class Browser:
         async with self._lock:
             if self._ctx is None:
                 config.PROFILE_DIR.mkdir(parents=True, exist_ok=True)
+                ensure_display()
                 self._pw = await async_playwright().start()
-                self._ctx = await self._pw.chromium.launch_persistent_context(
-                    str(config.PROFILE_DIR),
-                    headless=config.HEADLESS,
-                    viewport={"width": 1280, "height": 900},
-                    **LAUNCH_OPTIONS,
-                )
+                try:
+                    self._ctx = await self._pw.chromium.launch_persistent_context(
+                        str(config.PROFILE_DIR),
+                        headless=config.HEADLESS,
+                        viewport={"width": 1280, "height": 900},
+                        **LAUNCH_OPTIONS,
+                    )
+                except PlaywrightError as e:
+                    await self._pw.stop()
+                    self._pw = None
+                    msg = str(e)
+                    if "XServer" in msg or "DISPLAY" in msg:
+                        raise BrowserError("Couldn't open the browser window (no display found). Set DISPLAY "
+                                           "for the MCP server, or WELLFOUND_HEADLESS=1 to run hidden.") from None
+                    if "ProcessSingleton" in msg or "profile" in msg.lower() and "in use" in msg.lower():
+                        raise BrowserError("The browser profile is already open, probably by "
+                                           "wellfound-mcp-login. Close that window and try again.") from None
+                    raise BrowserError(f"Couldn't start the browser: {msg.splitlines()[0]}") from None
             pages = self._ctx.pages
             return pages[0] if pages else await self._ctx.new_page()
 

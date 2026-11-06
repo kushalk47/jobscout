@@ -15,7 +15,7 @@ import sys
 from playwright.async_api import async_playwright
 
 from . import config, wellfound
-from .browser import LAUNCH_OPTIONS
+from .browser import LAUNCH_OPTIONS, ensure_display
 
 LOGIN_URL = f"{config.BASE_URL}/login"
 CHECK_URL = f"{config.BASE_URL}/role/r/software-engineer"
@@ -40,6 +40,7 @@ async def _logged_in(ctx) -> bool:
 
 async def _run() -> int:
     config.PROFILE_DIR.mkdir(parents=True, exist_ok=True)
+    ensure_display()
     async with async_playwright() as pw:
         ctx = await pw.chromium.launch_persistent_context(str(config.PROFILE_DIR), headless=False, **LAUNCH_OPTIONS)
         if await _logged_in(ctx):
