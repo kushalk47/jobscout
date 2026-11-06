@@ -51,11 +51,16 @@ password or Wellfound's email link.
 
 ## Use it from Claude Code
 
-Register the server (the `--scope user` part makes it available in every folder):
+Register the server from the project folder. This uses Claude Code's default **local** scope:
+the tools load only when you start `claude` inside this folder, so other projects don't pay
+for their tool definitions.
 ```bash
-claude mcp add --scope user wellfound -- uv run --directory ~/DEV/wellfound-mcp wellfound-mcp
+cd ~/DEV/wellfound-mcp
+claude mcp add wellfound -- uv run --directory ~/DEV/wellfound-mcp wellfound-mcp
+claude                                 # start Claude Code here to use it
 ```
-Restart Claude Code, then ask things like:
+(Add `--scope user` instead if you want the tools in every folder, at roughly 1,200 tokens
+per message everywhere.) Then ask things like:
 
 - "Find AI engineer and data analyst jobs in Bangalore and apply to the good fits."
 - "Show me what you skipped and why."
@@ -72,14 +77,24 @@ open the same profile twice.
 | `check_login` | Checks the saved session is still logged in |
 | `get_profile` | Reads `profile.md` |
 | `save_answer(question, answer)` | Adds an answer you gave to `profile.md`, so it isn't asked again |
-| `search_jobs(role, location?, remote?, limit=10)` | Compact rows; hides skipped jobs, marks ones already drafted, held or applied to |
-| `get_job(job_id)` | Requirements, stack, pay, description, and `fit` against your rules. Takes the full id from search, like `4417481-software-engineer` |
+| `search_jobs(role, location?, remote?, limit=10, summaries=false)` | Compact rows; hides skipped jobs, marks ones already drafted, held or applied to. `summaries=true` adds a one-line summary per job |
+| `get_job(job_id, full=false)` | Requirements, stack, pay and `fit` against your rules (the fit check always reads the full description). `full=true` also returns the description. Takes the full id from search, like `4417481-software-engineer` |
 | `skip_job(job_ids, reason?, confirm=false, undo=false)` | Skips jobs (or un-skips them) |
-| `draft_application(job_id)` | Opens the form and lists its questions. Nothing is sent |
+| `draft_application(job_id)` | Opens the form: its questions, any warnings, `fit`, and the job description for writing answers. Nothing is sent |
 | `fact_check(job_id, answers)` | Checks the answers against `profile.md` and the posting |
 | `hold_application(job_id, answers, reason)` | Keeps a draft unsent and emails you a "Needs review" alert |
 | `submit_application(job_id, answers, confirm=false)` | Preview by default; sends with `confirm=true` |
 | `list_applications(status?)` | Your local log: `submitted`, `held`, `drafted` or `skipped` |
+
+## Token use
+
+Results come back as one compact JSON block with empty fields dropped. A search of 10 jobs
+is about 400 tokens, checking a job about 90, and the job description (about 250 more) is
+only sent with the application form, for jobs you actually apply to. The workflow rules are
+stated once in the server's instructions instead of in every tool description.
+
+To keep sessions cheap, start a fresh `claude` session to apply and use `/clear` between
+batches. Nothing is lost: the profile, `.env` and the application log live in files.
 
 ## Auto mode and the checks
 
