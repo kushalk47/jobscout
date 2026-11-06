@@ -64,3 +64,8 @@ def submitted_today() -> int:
             "SELECT COUNT(*) FROM applications WHERE status = 'submitted' AND updated_at LIKE ?",
             (f"{date.today().isoformat()}%",),
         ).fetchone()[0]
+
+
+def delete(job_id: str) -> None:
+    with _conn() as c:
+        c.execute("DELETE FROM applications WHERE job_id = ?", (job_id,))

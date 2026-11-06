@@ -23,3 +23,7 @@ MAX_DELAY = float(os.environ.get("WELLFOUND_MAX_DELAY", "7"))
 
 # Hard cap on submissions per day, enforced from the local log.
 DAILY_APPLY_LIMIT = int(os.environ.get("WELLFOUND_DAILY_LIMIT", "15"))
+
+# Your background and standard answers, used to fill application forms.
+# Lives outside the repo by default because it holds personal details.
+PROFILE_PATH = Path(os.environ.get("WELLFOUND_PROFILE", DATA_DIR / "profile.md"))
