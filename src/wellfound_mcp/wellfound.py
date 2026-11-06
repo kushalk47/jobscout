@@ -367,10 +367,13 @@ async def _open_application(browser: Browser, job_id: str):
 
 async def application_questions(browser: Browser, job_id: str) -> dict[str, Any]:
     page = await _open_application(browser, job_id)
-    form = parse_application(await page.content())
+    html = await page.content()
+    form = parse_application(html)
     if form is None:
         raise ApplyError("Could not read the application form.")
-    return form
+    # The apply page is the job page, so its details come along for free.
+    job = parse_job(html, job_id)
+    return {**form, "job": None if "error" in job else job}
 
 
 async def submit(browser: Browser, job_id: str, answers: dict[str, str]) -> None:

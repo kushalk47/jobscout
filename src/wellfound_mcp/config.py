@@ -56,3 +56,11 @@ SMTP_USER = os.environ.get("WELLFOUND_SMTP_USER", "") or EMAIL_TO
 SMTP_PASSWORD = os.environ.get("WELLFOUND_SMTP_PASSWORD", "").replace(" ", "")
 SMTP_HOST = os.environ.get("WELLFOUND_SMTP_HOST", "smtp.gmail.com")
 SMTP_PORT = int(os.environ.get("WELLFOUND_SMTP_PORT", "465"))
+
+# Automatic applying. When on, Claude may submit without asking, but only for
+# jobs that pass the fit rules and answers that pass fact_check; everything
+# else is held and emailed to you. Off unless WELLFOUND_AUTO_APPLY=1.
+AUTO_APPLY = os.environ.get("WELLFOUND_AUTO_APPLY", "0") == "1"
+MAX_YEARS = float(os.environ.get("WELLFOUND_MAX_YEARS", "3"))
+MIN_SALARY_LPA = float(os.environ.get("WELLFOUND_MIN_SALARY_LPA", "4"))
+

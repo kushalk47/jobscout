@@ -145,3 +145,4 @@ def test_apply_error_detects_limit():
     assert e.limit_reached and "limit on active applications" in str(e)
     e2 = w.ApplyError("form didn't open", "Something else went wrong")
     assert not e2.limit_reached and str(e2) == "form didn't open" and e2.notice
+

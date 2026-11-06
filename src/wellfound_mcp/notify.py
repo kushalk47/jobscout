@@ -63,6 +63,36 @@ def application_sent(job: dict, answers: list[dict]) -> str:
         return f"failed: {type(e).__name__}: {e}"
 
 
+def application_held(job: dict, answers: list[dict], reason: str) -> str:
+    """Email a draft that was NOT sent, so the user can decide. Never raises."""
+    if not enabled():
+        return "off (set WELLFOUND_EMAIL_TO and WELLFOUND_SMTP_PASSWORD in .env)"
+    title, company = job.get("title") or "Unknown role", job.get("company") or "Unknown company"
+    lines = [f"An application to {title} at {company} was NOT sent. It needs your review.", "",
+             f"Why it was held: {reason}", "",
+             f"Link:      {job.get('url') or ''}",
+             f"Salary:    {job.get('salary') or 'not listed'}",
+             f"Location:  {job.get('location') or 'not listed'}",
+             f"Job id:    {job.get('id') or ''}"]
+    if answers:
+        lines += ["", "Draft answers:"]
+        for a in answers:
+            lines += ["", f"Q: {a['question']}", f"A: {a['answer'] or '(left blank)'}"]
+    lines += ["", "To send it, open Claude Code and say e.g. \"send the held application to "
+              f"{company}\" (or edit the answer first). To drop it, ask Claude to skip it.",
+              "", "Sent by wellfound-mcp."]
+    msg = EmailMessage()
+    msg["Subject"] = f"[Wellfound] Needs review: {title} at {company}"
+    msg["From"] = config.SMTP_USER
+    msg["To"] = config.EMAIL_TO
+    msg.set_content("\n".join(lines))
+    try:
+        send(msg)
+        return f"sent to {config.EMAIL_TO}"
+    except Exception as e:  # noqa: BLE001
+        return f"failed: {type(e).__name__}: {e}"
+
+
 def test_main() -> None:
     """`uv run wellfound-mcp-test-email`: send a sample alert to check the setup."""
     if not enabled():
