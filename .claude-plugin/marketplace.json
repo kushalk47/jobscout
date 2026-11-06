@@ -1,0 +1,11 @@
+{
+  "name": "jobscout",
+  "owner": { "name": "Kushal Kantharaju" },
+  "plugins": [
+    {
+      "name": "jobscout",
+      "source": "./plugin",
+      "description": "Token-frugal LinkedIn job search MCP server + job-hunt skill."
+    }
+  ]
+}

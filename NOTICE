@@ -1,0 +1,11 @@
+jobscout
+Copyright 2026 Kushal Kantharaju
+
+This product includes logic ported from linkedin-mcp-server
+(https://github.com/prakharagarwal-dev/linkedin-mcp-server),
+Copyright Prakhar Agarwal, licensed under the Apache License 2.0:
+LinkedIn job-search URL filter codes, result-card and job-detail extraction
+approach, and login-wall / checkpoint detection.
+
+jobscout is not affiliated with, endorsed by, or sponsored by LinkedIn.
+"LinkedIn" is a trademark of LinkedIn Corporation.

@@ -1,0 +1,10 @@
+/bin/
+/dist/
+*.exe
+*.db
+*.db-wal
+*.db-shm
+chrome-profile/
+
+# personal data: resumes, profile
+/data/
