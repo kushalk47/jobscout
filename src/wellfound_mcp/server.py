@@ -36,6 +36,15 @@ def _names(job_id: str) -> dict:
     return {"title": j.get("title") or "", "company": j.get("company") or ""}
 
 
+def _apply_error(e: Exception, job_id: str) -> dict:
+    out = {"error": str(e), "job_id": job_id, "wellfound_says": getattr(e, "notice", None)}
+    if getattr(e, "limit_reached", False):
+        store.record_limit_hit()
+        out["limit_reached"] = True
+        out["next"] = "Stop applying for now and tell the user; slots free up as older applications expire."
+    return {k: v for k, v in out.items() if v is not None}
+
+
 @mcp.tool()
 async def check_login() -> dict:
     """Check whether the saved browser session is logged in to Wellfound."""
@@ -128,7 +137,7 @@ async def draft_application(job_id: str) -> dict:
     try:
         form = await wellfound.application_questions(browser, job_id)
     except (wellfound.ApplyError, BrowserError) as e:
-        return {"error": str(e), "job_id": job_id}
+        return _apply_error(e, job_id)
     drafts[job_id] = form["questions"]
     store.record(job_id, "drafted", url=f"{config.BASE_URL}/jobs/{job_id}", **_names(job_id))
     return {"job_id": job_id, **_names(job_id), **form,
@@ -152,13 +161,16 @@ async def submit_application(job_id: str, answers: dict[str, str], confirm: bool
         unknown = sorted(set(answers) - {q["key"] for q in questions})
         return {"preview": True, "job_id": job_id, **_names(job_id), "answers": rows,
                 "missing_required": missing or None, "unknown_keys": unknown or None,
+                "today": store.daily_limit(),
                 "next": "Show this to the user. Resubmit with confirm=True only if they approve."}
-    if store.submitted_today() >= config.DAILY_APPLY_LIMIT:
-        return {"error": f"Daily limit of {config.DAILY_APPLY_LIMIT} submissions reached."}
+    today = store.daily_limit()
+    if today["submitted_today"] >= today["limit_today"]:
+        return {"error": f"Today's limit of {today['limit_today']} applications is reached. "
+                         "It rises by 1 each day you apply without Wellfound blocking you.", **today}
     try:
         await wellfound.submit(browser, job_id, answers)
     except (wellfound.ApplyError, BrowserError) as e:
-        return {"submitted": False, "error": str(e), "job_id": job_id}
+        return {"submitted": False, **_apply_error(e, job_id)}
     store.record(job_id, "submitted", **_names(job_id))
     drafts.pop(job_id, None)
     return {"submitted": True, "job_id": job_id, **_names(job_id)}

@@ -138,3 +138,10 @@ def test_typing_chunks_keep_text_exact():
     for _ in range(20):
         parts = _chunks(text)
         assert "".join(parts) == text and all(parts)
+
+
+def test_apply_error_detects_limit():
+    e = w.ApplyError("form didn't open", "You have reached the maximum number of active applications")
+    assert e.limit_reached and "limit on active applications" in str(e)
+    e2 = w.ApplyError("form didn't open", "Something else went wrong")
+    assert not e2.limit_reached and str(e2) == "form didn't open" and e2.notice

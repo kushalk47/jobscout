@@ -324,6 +324,34 @@ def parse_application(page_html: str) -> dict[str, Any] | None:
     return {"questions": list(questions.values()), "warnings": _trim(warning, 300) if warning else None}
 
 
+# Wellfound caps how many applications can be active at once (the number isn't
+# published); slots free up as applications expire. Its warning is matched on
+# these words, since its exact wording hasn't been seen yet.
+LIMIT_WORDS = re.compile(r"maximum|limit|too many|active (job )?applications", re.I)
+
+NOTICE_JS = """() => [...document.querySelectorAll(
+  '[role=dialog], [role=alert], [role=status], .ReactModal__Content, [class*=flash], [class*=toast], [class*=Toast], [class*=fieldError]')]
+  .map(e => e.innerText.trim()).filter(Boolean).join(' | ').slice(0, 500)"""
+
+
+class ApplyError(Exception):
+    def __init__(self, message: str, notice: str | None = None) -> None:
+        self.notice = notice or None
+        self.limit_reached = bool(notice and LIMIT_WORDS.search(notice))
+        if self.limit_reached:
+            message = ("Wellfound's limit on active applications seems to be reached. "
+                       "Slots free up as older applications expire.")
+        super().__init__(message)
+
+
+async def _notice(page) -> str | None:
+    """Whatever Wellfound is showing in dialogs, alerts or toasts, for error messages."""
+    try:
+        return await page.evaluate(NOTICE_JS) or None
+    except Exception:
+        return None
+
+
 async def _open_application(browser: Browser, job_id: str):
     page = await browser.goto(f"{config.BASE_URL}/jobs/{job_id}?autoOpenApplication=true")
     if browser.last_status in (404, 410):
@@ -331,13 +359,10 @@ async def _open_application(browser: Browser, job_id: str):
     try:
         await page.wait_for_selector(SUBMIT_BUTTON, timeout=15_000)
     except Exception:
-        raise ApplyError("The application form didn't open. You may have already applied, "
-                         "the job may apply on an external site, or you may need to log in again.") from None
+        raise ApplyError("The application form didn't open. You may have already applied, the job may "
+                         "apply on an external site, you may have hit Wellfound's limit on active "
+                         "applications, or you may need to log in again.", await _notice(page)) from None
     return page
-
-
-class ApplyError(Exception):
-    pass
 
 
 async def application_questions(browser: Browser, job_id: str) -> dict[str, Any]:
@@ -379,6 +404,5 @@ async def submit(browser: Browser, job_id: str, answers: dict[str, str]) -> None
         # The modal closes once Wellfound accepts the application.
         await page.wait_for_selector(SUBMIT_BUTTON, state="detached", timeout=20_000)
     except Exception:
-        err = await page.evaluate(
-            "() => document.querySelector('.ReactModal__Content form')?.innerText?.slice(0, 400) ?? null")
-        raise ApplyError(f"Wellfound didn't confirm the submission. Form says: {err!r}") from None
+        raise ApplyError("Wellfound didn't confirm the submission. Check the browser window before "
+                         "trying again, so you don't apply twice.", await _notice(page)) from None

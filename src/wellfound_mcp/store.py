@@ -14,7 +14,9 @@ CREATE TABLE IF NOT EXISTS applications (
     status     TEXT NOT NULL,      -- drafted | submitted | skipped
     updated_at TEXT NOT NULL,
     notes      TEXT
-)
+);
+-- Days Wellfound said its limit on active applications was reached.
+CREATE TABLE IF NOT EXISTS limit_hits (day TEXT PRIMARY KEY);
 """
 
 
@@ -22,7 +24,7 @@ def _conn() -> sqlite3.Connection:
     config.DATA_DIR.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(config.DB_PATH)
     conn.row_factory = sqlite3.Row
-    conn.execute(SCHEMA)
+    conn.executescript(SCHEMA)
     return conn
 
 
@@ -64,6 +66,27 @@ def submitted_today() -> int:
             "SELECT COUNT(*) FROM applications WHERE status = 'submitted' AND updated_at LIKE ?",
             (f"{date.today().isoformat()}%",),
         ).fetchone()[0]
+
+
+def record_limit_hit() -> None:
+    with _conn() as c:
+        c.execute("INSERT OR IGNORE INTO limit_hits (day) VALUES (?)", (date.today().isoformat(),))
+
+
+def daily_limit() -> dict:
+    """Today's cap: DAILY_START plus one for each clean past day of applying since
+    the last time Wellfound's limit was hit, up to DAILY_MAX."""
+    today = date.today().isoformat()
+    with _conn() as c:
+        last_hit = c.execute("SELECT MAX(day) FROM limit_hits").fetchone()[0] or ""
+        clean_days = c.execute(
+            """SELECT COUNT(DISTINCT substr(updated_at, 1, 10)) FROM applications
+               WHERE status = 'submitted' AND substr(updated_at, 1, 10) > ?
+                 AND substr(updated_at, 1, 10) < ?""",
+            (last_hit, today),
+        ).fetchone()[0]
+    limit = min(config.DAILY_MAX, config.DAILY_START + clean_days)
+    return {"submitted_today": submitted_today(), "limit_today": limit}
 
 
 def delete(job_id: str) -> None:

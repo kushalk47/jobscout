@@ -23,7 +23,11 @@ MIN_DELAY = float(os.environ.get("WELLFOUND_MIN_DELAY", "3"))
 MAX_DELAY = float(os.environ.get("WELLFOUND_MAX_DELAY", "7"))
 
 # Hard cap on submissions per day, enforced from the local log.
-DAILY_APPLY_LIMIT = int(os.environ.get("WELLFOUND_DAILY_LIMIT", "15"))
+# The daily cap ramps up: it starts at DAILY_START, rises by 1 for every past day
+# you applied without hitting Wellfound's limit on active applications, and stops
+# at DAILY_MAX. Hitting Wellfound's limit drops it back to DAILY_START.
+DAILY_START = int(os.environ.get("WELLFOUND_DAILY_START", "5"))
+DAILY_MAX = int(os.environ.get("WELLFOUND_DAILY_LIMIT", "15"))
 
 # Your background and standard answers, used to fill application forms.
 # Copy profile.example.md to profile.md and fill it in. Gitignored, because it

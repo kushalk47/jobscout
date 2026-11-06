@@ -39,8 +39,14 @@ can't find a library, install it with pacman.
 | `WELLFOUND_MCP_DATA` | `./data` (project folder) | Browser profile and SQLite log |
 | `WELLFOUND_HEADLESS` | `0` | `1` hides the browser |
 | `WELLFOUND_MIN_DELAY` / `MAX_DELAY` | `3` / `7` | Random pause between page loads (seconds) |
-| `WELLFOUND_DAILY_LIMIT` | `15` | Max submissions per day |
+| `WELLFOUND_DAILY_START` | `5` | Daily cap to start at. It rises by 1 for each day you apply without Wellfound blocking you, and drops back here if it does |
+| `WELLFOUND_DAILY_LIMIT` | `15` | The most the daily cap can rise to |
 | `WELLFOUND_PROFILE` | `./profile.md` (project root) | Your background and standard answers |
+
+Wellfound also has its own cap on how many applications can be **active at once**
+(the number isn't published). Slots free up as older applications expire. If you hit
+it, `draft_application` and `submit_application` return `limit_reached: true` along
+with Wellfound's message. Because slots are limited, apply selectively.
 
 Everything stays inside the project folder. `data/` holds your logged-in browser
 session (treat it like a password) and the application log, and `profile.md` holds
