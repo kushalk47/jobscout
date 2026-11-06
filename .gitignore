@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+.ruff_cache/
+.pytest_cache/
+# Browser profile and application log live outside the repo by default,
+# but ignore them here too in case WELLFOUND_MCP_DATA points inside it.
+data/
+*.db
