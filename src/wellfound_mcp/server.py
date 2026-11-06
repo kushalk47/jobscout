@@ -9,7 +9,9 @@ from contextlib import asynccontextmanager
 
 from mcp.server.fastmcp import FastMCP
 
-from . import config, profile, store, wellfound
+import asyncio
+
+from . import config, notify, profile, store, wellfound
 from .browser import Browser, BrowserError
 
 logging.basicConfig(stream=sys.stderr, level=logging.INFO)
@@ -98,7 +100,8 @@ async def get_job(job_id: str) -> dict:
     except BrowserError as e:
         return {"error": str(e), "job_id": job_id}
     if "error" not in job:
-        seen_jobs[job_id] = {**seen_jobs.get(job_id, {}), "title": job["title"], "company": job["company"]}
+        seen_jobs[job_id] = {**seen_jobs.get(job_id, {}), "title": job["title"], "company": job["company"],
+                             "salary": job.get("salary"), "location": ", ".join(job.get("locations") or [])}
     return job
 
 
@@ -172,8 +175,10 @@ async def submit_application(job_id: str, answers: dict[str, str], confirm: bool
     except (wellfound.ApplyError, BrowserError) as e:
         return {"submitted": False, **_apply_error(e, job_id)}
     store.record(job_id, "submitted", **_names(job_id))
-    drafts.pop(job_id, None)
-    return {"submitted": True, "job_id": job_id, **_names(job_id)}
+    sent = [{"question": q["question"], "answer": answers.get(q["key"], "")} for q in drafts.pop(job_id, [])]
+    job = {**seen_jobs.get(job_id, {}), **_names(job_id), "id": job_id, "url": f"{config.BASE_URL}/jobs/{job_id}"}
+    email = await asyncio.to_thread(notify.application_sent, job, sent)
+    return {"submitted": True, "job_id": job_id, **_names(job_id), "email_alert": email}
 
 
 @mcp.tool()

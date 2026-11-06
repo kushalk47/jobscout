@@ -62,6 +62,21 @@ to 3 times with backoff. If Cloudflare shows a check, the server waits up to 2
 minutes for you to clear it in the browser window. "Send application" is never
 retried, because a retry could apply twice.
 
+## Email alerts
+
+After each submitted application, the server emails you the job title, company,
+link, salary, location, time and your answers. Subjects start with
+`[Wellfound] Applied:`, so a Gmail filter can label them.
+
+1. On the Gmail account that will send the alerts, turn on 2-Step Verification,
+   then create an app password at https://myaccount.google.com/apppasswords.
+2. `cp .env.example .env` and fill in `WELLFOUND_EMAIL_TO` and
+   `WELLFOUND_SMTP_PASSWORD`. `.env` is gitignored.
+3. `uv run wellfound-mcp-test-email` sends a sample alert.
+
+If an alert fails to send, the application still counts; the tool result says
+the email failed.
+
 ## How answers work
 
 Claude reads `profile.md` once per session and answers form questions from it.

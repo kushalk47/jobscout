@@ -12,6 +12,7 @@ dependencies = [
 [project.scripts]
 wellfound-mcp = "wellfound_mcp.server:main"
 wellfound-mcp-login = "wellfound_mcp.login:main"
+wellfound-mcp-test-email = "wellfound_mcp.notify:test_main"
 
 [build-system]
 requires = ["hatchling"]
