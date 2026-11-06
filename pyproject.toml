@@ -14,6 +14,7 @@ wellfound-mcp = "wellfound_mcp.server:main"
 wellfound-mcp-login = "wellfound_mcp.login:main"
 wellfound-mcp-test-email = "wellfound_mcp.notify:test_main"
 wellfound-mcp-dashboard = "wellfound_mcp.dashboard:main"
+wellfound-mcp-weekly-report = "wellfound_mcp.weekly:main"
 
 [build-system]
 requires = ["hatchling"]

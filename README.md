@@ -77,6 +77,21 @@ link, salary, location, time and your answers. Subjects start with
 If an alert fails to send, the application still counts; the tool result says
 the email failed.
 
+## Weekly report
+
+Every Sunday at 18:00, a summary email lists the week's applications (with links),
+drafts you haven't sent, skip reasons and your current daily cap. It uses the same
+`.env` settings as the alerts.
+
+```bash
+uv run wellfound-mcp-weekly-report --dry-run    # preview this week's report
+uv run wellfound-mcp-weekly-report --install    # set up the Sunday timer (systemd user)
+uv run wellfound-mcp-weekly-report --uninstall  # remove it
+```
+
+The timer is persistent: if the computer is off on Sunday evening, the report goes
+out the next time you log in. Each week's report is sent at most once.
+
 ## Dashboard
 
 `uv run wellfound-mcp-dashboard` opens a local page at http://127.0.0.1:8765 with
