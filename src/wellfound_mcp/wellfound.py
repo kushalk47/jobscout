@@ -247,7 +247,7 @@ def _parse_job_apollo(page_html: str, job_id: str) -> dict[str, Any] | None:
         "salary": htmllib.unescape(j.get("compensation") or "") or None,
         "type": j.get("jobType"),
         "remote": j.get("remote"),
-        "remote_policy": {"ONSITE": "In office", "REMOTE": "Remote only", "HYBRID": "Hybrid"}.get(remote_kind, remote_kind),
+        "remote_policy": {"ONSITE": "In office", "REMOTE": "Remote only", "HYBRID": "Hybrid", "ONSITE_OR_REMOTE": "On-site or remote"}.get(remote_kind, remote_kind),
         "locations": _dedupe(j.get("locationNames") or []),
         "hires_in": j.get("acceptedRemoteLocationNames") or [],
         "years": f"{yrs}+" if yrs else None,
