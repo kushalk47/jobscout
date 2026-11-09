@@ -17,11 +17,12 @@ def enabled() -> bool:
     return bool(config.EMAIL_TO and config.SMTP_PASSWORD)
 
 
-def build_message(job: dict, answers: list[dict]) -> EmailMessage:
+def build_message(job: dict, answers: list[dict], source: str = "Wellfound") -> EmailMessage:
+    """source names where the application went: Wellfound, or a career site like Greenhouse."""
     title, company = job.get("title") or "Unknown role", job.get("company") or "Unknown company"
     when = datetime.now().strftime("%a %d %b %Y, %H:%M")
     lines = [
-        f"You applied to {title} at {company} on Wellfound.",
+        f"You applied to {title} at {company} on {source}.",
         "",
         f"When:      {when}",
         f"Link:      {job.get('url') or ''}",
@@ -33,11 +34,12 @@ def build_message(job: dict, answers: list[dict]) -> EmailMessage:
         lines += ["", "Your answers:"]
         for a in answers:
             lines += ["", f"Q: {a['question']}", f"A: {a['answer'] or '(left blank)'}"]
-    lines += ["", "Track all applications: https://wellfound.com/jobs/applications",
-              "", "Sent by wellfound-mcp."]
+    if source == "Wellfound":
+        lines += ["", "Track all applications: https://wellfound.com/jobs/applications"]
+    lines += ["", "Sent by hireloop."]
 
     msg = EmailMessage()
-    msg["Subject"] = f"[Wellfound] Applied: {title} at {company}"
+    msg["Subject"] = f"[{'Wellfound' if source == 'Wellfound' else 'hireloop'}] Applied: {title} at {company}"
     msg["From"] = config.SMTP_USER
     msg["To"] = config.EMAIL_TO
     msg.set_content("\n".join(lines))
@@ -50,12 +52,12 @@ def send(msg: EmailMessage) -> None:
         s.send_message(msg)
 
 
-def application_sent(job: dict, answers: list[dict]) -> str:
+def application_sent(job: dict, answers: list[dict], source: str = "Wellfound") -> str:
     """Send the alert. Returns a short status; never raises (the application already went through)."""
     if not enabled():
         return "off (set WELLFOUND_EMAIL_TO and WELLFOUND_SMTP_PASSWORD in .env)"
     try:
-        send(build_message(job, answers))
+        send(build_message(job, answers, source))
         return f"sent to {config.EMAIL_TO}"
     except smtplib.SMTPAuthenticationError:
         return "failed: Gmail rejected the login. Use an app password, not your normal password."
@@ -80,7 +82,7 @@ def application_held(job: dict, answers: list[dict], reason: str) -> str:
             lines += ["", f"Q: {a['question']}", f"A: {a['answer'] or '(left blank)'}"]
     lines += ["", "To send it, open Claude Code and say e.g. \"send the held application to "
               f"{company}\" (or edit the answer first). To drop it, ask Claude to skip it.",
-              "", "Sent by wellfound-mcp."]
+              "", "Sent by hireloop."]
     msg = EmailMessage()
     msg["Subject"] = f"[Wellfound] Needs review: {title} at {company}"
     msg["From"] = config.SMTP_USER

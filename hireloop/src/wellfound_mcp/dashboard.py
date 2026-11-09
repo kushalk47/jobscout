@@ -1,7 +1,7 @@
-"""Local, read-only dashboard over the application log.
+"""Local, read-only dashboard over the application logs: Wellfound and jobscout (LinkedIn).
 
 Run with: uv run wellfound-mcp-dashboard   (opens http://127.0.0.1:8765)
-It only listens on 127.0.0.1, reads data/applications.db, and never changes it.
+It only listens on 127.0.0.1, reads the Wellfound log and ~/.jobscout/jobscout.db, and never changes them.
 """
 
 import json
@@ -13,7 +13,7 @@ from collections import Counter
 from datetime import date, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from . import config, store
+from . import config, jobscout_log, store
 
 DAYS = 30
 PORT = int(os.environ.get("WELLFOUND_DASHBOARD_PORT", "8765"))
@@ -28,6 +28,10 @@ def stats() -> dict:
                 "SELECT job_id, title, company, url, status, updated_at, notes FROM applications ORDER BY updated_at DESC")]
     else:
         rows = []
+    for r in rows:
+        r["source"] = "wellfound"
+    rows += jobscout_log.rows()
+    rows.sort(key=lambda r: r["updated_at"], reverse=True)
 
     today = date.today()
     submitted = [r for r in rows if r["status"] == "submitted"]
@@ -35,6 +39,7 @@ def stats() -> dict:
     week_start = (today - timedelta(days=6)).isoformat()
     for r in rows:
         r["url"] = r["url"] or f"{config.BASE_URL}/jobs/{r['job_id']}"
+    by_source = Counter(r["source"] for r in submitted)
     return {
         "today": today.isoformat(),
         "totals": {
@@ -43,6 +48,9 @@ def stats() -> dict:
             "drafted": sum(r["status"] == "drafted" for r in rows),
             "skipped": sum(r["status"] == "skipped" for r in rows),
             "held": sum(r["status"] == "held" for r in rows),
+            "shortlisted": sum(r["status"] == "shortlisted" for r in rows),
+            "linkedin": by_source.get("linkedin", 0),
+            "wellfound": by_source.get("wellfound", 0),
         },
         "cap": store.daily_limit() if config.DB_PATH.exists() else {"submitted_today": 0, "limit_today": config.DAILY_START},
         "cap_max": config.DAILY_MAX,
@@ -95,7 +103,7 @@ PAGE = r"""<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Wellfound Applications</title>
+<title>Job Applications</title>
 <style>
 :root {
   color-scheme: light;
@@ -155,14 +163,14 @@ td.date { white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--
 a { color: var(--link); }
 .status { display: inline-flex; align-items: center; gap: 6px; }
 .status::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--dot); }
-.status.submitted { --dot: var(--good); } .status.drafted { --dot: var(--warning); } .status.skipped { --dot: var(--text-muted); } .status.held { --dot: #d03b3b; }
+.status.submitted { --dot: var(--good); } .status.drafted { --dot: var(--warning); } .status.skipped { --dot: var(--text-muted); } .status.held { --dot: #d03b3b; } .status.shortlisted { --dot: var(--series-1); }
 .empty { padding: 24px; text-align: center; color: var(--text-muted); }
 </style>
 </head>
 <body>
 <main>
   <header>
-    <h1>Wellfound applications</h1>
+    <h1>Job applications</h1>
     <span class="muted" id="updated"></span>
   </header>
 
@@ -201,12 +209,14 @@ function tiles(d) {
   const pct = Math.min(100, Math.round(100 * cap.submitted_today / Math.max(1, cap.limit_today)));
   $("tiles").innerHTML = `
     <div class="card tile"><div class="label">Applied in total</div><div class="value">${t.submitted}</div>
-      <div class="sub">${t.this_week} in the last 7 days</div></div>
-    <div class="card tile"><div class="label">Applied today</div><div class="value">${cap.submitted_today} <span class="muted" style="font-size:16px">of ${cap.limit_today}</span></div>
+      <div class="sub">${t.this_week} in the last 7 days · LinkedIn ${t.linkedin}, Wellfound ${t.wellfound}</div></div>
+    <div class="card tile"><div class="label">Wellfound today</div><div class="value">${cap.submitted_today} <span class="muted" style="font-size:16px">of ${cap.limit_today}</span></div>
       <div class="meter" role="img" aria-label="${cap.submitted_today} of ${cap.limit_today} used today"><div style="width:${pct}%"></div></div>
       <div class="sub">Cap rises by 1 per clean day, up to ${d.cap_max}</div></div>
     <div class="card tile"><div class="label">Held for your review</div><div class="value">${t.held}</div>
       <div class="sub">${t.drafted} more drafted, not sent</div></div>
+    <div class="card tile"><div class="label">Shortlisted</div><div class="value">${t.shortlisted}</div>
+      <div class="sub">LinkedIn jobs not applied to yet</div></div>
     <div class="card tile"><div class="label">Skipped</div><div class="value">${t.skipped}</div>
       <div class="sub">Hidden from search</div></div>`;
 }
@@ -265,7 +275,7 @@ function table() {
   $("rows").innerHTML = rows.length ? rows.map(r => `<tr>
       <td class="date">${esc(r.updated_at.slice(0, 10))}</td>
       <td><a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.title || r.job_id)}</a></td>
-      <td>${esc(r.company)}</td>
+      <td>${esc(r.company)} <span class="muted">· ${esc(r.source)}</span></td>
       <td><span class="status ${esc(r.status)}">${esc(r.status)}</span></td>
       <td class="muted">${esc(r.notes)}</td></tr>`).join("")
     : `<tr><td colspan="5" class="empty">Nothing here yet.</td></tr>`;
@@ -274,7 +284,7 @@ function table() {
 function filters() {
   const counts = {all: data.rows.length};
   data.rows.forEach(r => counts[r.status] = (counts[r.status] || 0) + 1);
-  $("filters").innerHTML = ["all", "submitted", "held", "drafted", "skipped"].map(s =>
+  $("filters").innerHTML = ["all", "submitted", "shortlisted", "held", "drafted", "skipped"].map(s =>
     `<button data-s="${s}" aria-pressed="${s === filter}">${s[0].toUpperCase() + s.slice(1)} (${counts[s] || 0})</button>`).join("");
   $("filters").onclick = e => { const b = e.target.closest("button"); if (!b) return; filter = b.dataset.s; filters(); table(); };
 }

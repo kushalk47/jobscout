@@ -47,6 +47,8 @@ INSTRUCTIONS = (
        if config.AUTO_APPLY else
        "Manual mode: show the submit preview and send with confirm=true only after the user approves it; "
        "skip_job also needs the user's OK.")
+    + " For other career sites filled in a browser: check_answers before Submit (fix or ask the user "
+      "about every issue), then notify_applied once the site's success page is seen."
 )
 mcp = FastMCP("wellfound", instructions=INSTRUCTIONS, lifespan=lifespan)
 
@@ -302,6 +304,22 @@ async def submit_application(job_id: str, answers: dict[str, str], confirm: bool
 def list_applications(status: str | None = None, limit: int = 50) -> list[dict]:
     """Local log. status: submitted | held | drafted | skipped."""
     return store.list_all(status, limit)
+
+
+# ---------- Company career sites (Greenhouse, Lever, Ashby, ...), filled in the browser ----------
+
+@tool()
+def check_answers(answers: dict[str, str], job_text: str) -> dict:
+    """Career-site forms: fact-check free-text answers (keyed by question label) against profile.md, personal_details.json and job_text (title, company, description) before Submit."""
+    return factcheck.check_form(answers, job_text, profile.facts_text())
+
+
+@tool()
+def notify_applied(title: str, company: str, url: str, site: str, answers: dict[str, str] | None = None) -> dict:
+    """Career-site forms: after the success page is seen, email the user a record (site e.g. "Greenhouse"). No-op if email isn't set up."""
+    job = {"title": title, "company": company, "url": url}
+    qa = [{"question": q, "answer": a} for q, a in (answers or {}).items()]
+    return {"email": notify.application_sent(job, qa, source=site or "a company site")}
 
 
 def main() -> None:

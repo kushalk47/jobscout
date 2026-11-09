@@ -1,4 +1,6 @@
-"""Weekly email report, sent on Sundays by a systemd user timer.
+"""Weekly email report over Wellfound and jobscout (LinkedIn), sent on Sundays.
+
+Scheduled by a systemd user timer on Linux, or Task Scheduler on Windows.
 
   uv run wellfound-mcp-weekly-report            send this week's report (once per week)
   uv run wellfound-mcp-weekly-report --dry-run  print it instead of sending
@@ -10,6 +12,7 @@ The timer is Persistent, so if the computer is off on Sunday evening the
 report goes out the next time you log in.
 """
 
+import os
 import shutil
 import subprocess
 import sys
@@ -33,20 +36,24 @@ def build(today: date | None = None) -> EmailMessage:
     skipped = [r for r in in_week if r["status"] == "skipped"]
     pending = [r for r in s["rows"] if r["status"] == "drafted"]
     held = [r for r in s["rows"] if r["status"] == "held"]
+    shortlisted = [r for r in s["rows"] if r["status"] == "shortlisted"]
     span = f"{start:%d %b} – {today:%d %b %Y}"
 
-    lines = [f"Your Wellfound week, {span}", ""]
+    lines = [f"Your job-hunt week, {span}", ""]
     lines += [f"Applied this week:   {len(sent)}",
+              f"  LinkedIn / career sites: {sum(r['source'] == 'linkedin' for r in sent)}",
+              f"  Wellfound:               {sum(r['source'] == 'wellfound' for r in sent)}",
               f"Applied in total:    {s['totals']['submitted']}",
+              f"Shortlisted, not applied: {len(shortlisted)}",
               f"Skipped this week:   {len(skipped)}",
               f"Held for review:     {len(held)}",
               f"Drafted, not sent:   {len(pending)}",
-              f"Daily cap now:       {s['cap']['limit_today']} (max {s['cap_max']})"]
+              f"Wellfound daily cap: {s['cap']['limit_today']} (max {s['cap_max']})"]
 
     if sent:
         lines += ["", "Applications sent"]
         for r in sorted(sent, key=lambda r: r["updated_at"]):
-            lines += [f"  {r['updated_at'][:10]}  {r['title'] or r['job_id']} at {r['company'] or '?'}",
+            lines += [f"  {r['updated_at'][:10]}  {r['title'] or r['job_id']} at {r['company'] or '?'}  ({r['source']})",
                       f"              {r['url']}"]
     else:
         lines += ["", "No applications sent this week."]
@@ -68,11 +75,11 @@ def build(today: date | None = None) -> EmailMessage:
         lines += ["", "Why jobs were skipped"]
         lines += [f"  {n}× {why}" for why, n in sorted(reasons.items(), key=lambda kv: -kv[1])]
 
-    lines += ["", "Recruiter replies: https://wellfound.com/jobs/applications",
-              "Full stats: run `uv run wellfound-mcp-dashboard`", "", "Sent by wellfound-mcp."]
+    lines += ["", "Wellfound recruiter replies: https://wellfound.com/jobs/applications",
+              "Full stats: run `uv run wellfound-mcp-dashboard`", "", "Sent by hireloop."]
 
     msg = EmailMessage()
-    msg["Subject"] = f"[Wellfound] Weekly report: {len(sent)} applied ({span})"
+    msg["Subject"] = f"[hireloop] Weekly report: {len(sent)} applied ({span})"
     msg["From"] = config.SMTP_USER
     msg["To"] = config.EMAIL_TO
     msg.set_content("\n".join(lines))
@@ -87,7 +94,7 @@ def _week(today: date) -> str:
 def send_weekly(force: bool = False, today: date | None = None) -> str:
     today = today or date.today()
     marker = config.DATA_DIR / SENT_MARKER
-    if not force and marker.exists() and marker.read_text().strip() == _week(today):
+    if not force and marker.exists() and marker.read_text(encoding="utf-8").strip() == _week(today):
         return "already sent this week"
     if not notify.enabled():
         return "off (set WELLFOUND_EMAIL_TO and WELLFOUND_SMTP_PASSWORD in .env)"
@@ -96,7 +103,7 @@ def send_weekly(force: bool = False, today: date | None = None) -> str:
     except Exception as e:  # noqa: BLE001
         return f"failed: {type(e).__name__}: {e}"
     config.DATA_DIR.mkdir(parents=True, exist_ok=True)
-    marker.write_text(_week(today))
+    marker.write_text(_week(today), encoding="utf-8")
     return f"sent to {config.EMAIL_TO}"
 
 
@@ -106,7 +113,30 @@ def _unit_dir() -> Path:
     return Path.home() / ".config/systemd/user"
 
 
+TASK = "hireloop-weekly-report"
+
+
+def _install_windows() -> None:
+    """Task Scheduler: Sundays 18:00, and catch up at next logon if the PC was off."""
+    uv = shutil.which("uv") or "uv"
+    ps = (f"$a = New-ScheduledTaskAction -Execute '{uv}' "
+          f"-Argument 'run --directory \"{config.PROJECT_ROOT}\" wellfound-mcp-weekly-report'; "
+          "$t = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Sunday -At 18:00; "
+          "$s = New-ScheduledTaskSettingsSet -StartWhenAvailable; "
+          f"Register-ScheduledTask -TaskName '{TASK}' -Action $a -Trigger $t -Settings $s -Force | Out-Null")
+    subprocess.run(["powershell", "-NoProfile", "-Command", ps], check=True)
+    print(f"Installed Task Scheduler task '{TASK}' (Sundays 18:00).")
+
+
+def _uninstall_windows() -> None:
+    subprocess.run(["powershell", "-NoProfile", "-Command",
+                    f"Unregister-ScheduledTask -TaskName '{TASK}' -Confirm:$false"])
+    print("Removed the weekly report task.")
+
+
 def install() -> None:
+    if os.name == "nt":
+        return _install_windows()
     uv = shutil.which("uv") or "uv"
     d = _unit_dir()
     d.mkdir(parents=True, exist_ok=True)
@@ -134,6 +164,8 @@ WantedBy=timers.target
 
 
 def uninstall() -> None:
+    if os.name == "nt":
+        return _uninstall_windows()
     subprocess.run(["systemctl", "--user", "disable", "--now", f"{UNIT}.timer"])
     for ext in ("service", "timer"):
         (_unit_dir() / f"{UNIT}.{ext}").unlink(missing_ok=True)

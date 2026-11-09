@@ -143,3 +143,14 @@ def check(answers: dict[str, str], questions: list[dict], profile_text: str, job
                 issues.append(f"'{label}': '{base}' isn't in the profile or posting")
     unique = list(dict.fromkeys(issues))
     return {"passed": not unique, "issues": unique, "answers_hash": answers_hash(answers)}
+
+
+def check_form(answers: dict[str, str], job_text: str, facts_text: str) -> dict:
+    """check() for any company career-site form, not just Wellfound.
+
+    answers maps each form question (its label, as shown) to the answer typed in.
+    job_text is the posting (title, company, description); facts_text is
+    profile.md plus personal_details.json. Every question counts as required.
+    """
+    questions = [{"key": q, "question": q, "required": True} for q in answers]
+    return check(answers, questions, facts_text, {"description": job_text})

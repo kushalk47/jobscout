@@ -1,4 +1,14 @@
-# wellfound-mcp
+# hireloop (wellfound-mcp)
+
+Part of [jobscout](../README.md). It shares `~/.jobscout/` with the LinkedIn server: the same
+`profile.md`, plus `personal_details.json` for fact checks, and its own log in `~/.jobscout/wellfound/`.
+A `profile.md`, `data/` or `.env` in this folder still wins if present (older setups).
+
+Besides Wellfound, two tools work for **any company career site** filled in a browser by the
+`job-apply-cycle` skill: `check_answers` (fact-check before Submit) and `notify_applied` (email record).
+The dashboard and weekly report show LinkedIn applications from `~/.jobscout/jobscout.db` next to
+Wellfound ones.
+
 
 An MCP server that lets Claude find and apply to jobs on [Wellfound](https://wellfound.com)
 for you. It returns compact JSON so it stays cheap on tokens, browses at human speed,
@@ -15,7 +25,11 @@ everything it does.
 
 ## Setup
 
-Needs Python 3.12–3.14 and Chromium (installed by Playwright). Tested on CachyOS / Arch.
+Needs Python 3.12–3.14 and Chromium (installed by Playwright). Tested on CachyOS / Arch; runs on
+Windows too (use `scripts\daily-apply.ps1`, and `--install` sets up Task Scheduler instead of systemd).
+
+**Through the jobscout Claude plugin** nothing below is needed except `playwright install chromium`
+and, for Wellfound, the login (see the [main README](../README.md#claude-code-server--skill)).
 
 **With uv (recommended):**
 ```bash
@@ -107,6 +121,8 @@ the day starts one.
 | `hold_application(job_id, answers, reason)` | Keeps a draft unsent and emails you a "Needs review" alert |
 | `submit_application(job_id, answers, confirm=false)` | Preview by default; sends with `confirm=true` |
 | `list_applications(status?)` | Your local log: `submitted`, `held`, `drafted` or `skipped` |
+| `check_answers(answers, job_text)` | Any career-site form: fact-checks answers (keyed by question label) against `profile.md`, `personal_details.json` and the posting |
+| `notify_applied(title, company, url, site, answers?)` | Any career-site form: emails you a record after the success page is seen |
 
 ## Token use
 
@@ -180,7 +196,7 @@ skip reasons and your current daily cap.
 
 ```bash
 uv run wellfound-mcp-weekly-report --dry-run    # preview this week's report
-uv run wellfound-mcp-weekly-report --install    # set up the Sunday timer (systemd user)
+uv run wellfound-mcp-weekly-report --install    # set up the Sunday timer (systemd on Linux, Task Scheduler on Windows)
 uv run wellfound-mcp-weekly-report --uninstall  # remove it
 ```
 
@@ -220,8 +236,11 @@ Put these in `.env` (gitignored) or the environment; real environment variables 
 | `WELLFOUND_HEADLESS` | `0` | `1` hides the browser (Cloudflare checks then can't be cleared) |
 | `WELLFOUND_MIN_DELAY` / `WELLFOUND_MAX_DELAY` | `3` / `7` | Random pause between page loads, in seconds |
 | `WELLFOUND_DASHBOARD_PORT` | `8765` | Dashboard port |
-| `WELLFOUND_MCP_DATA` | `./data` | Browser session and application log |
-| `WELLFOUND_PROFILE` | `./profile.md` | Your profile |
+| `WELLFOUND_MCP_DATA` | `./data` if it exists, else `~/.jobscout/wellfound` | Browser session and application log |
+| `WELLFOUND_PROFILE` | `./profile.md` if it exists, else `~/.jobscout/profile.md` | Your profile |
+| `JOBSCOUT_HOME` | `~/.jobscout` | Shared folder with jobscout (its `.env` is read too) |
+| `JOBSCOUT_DB` | `~/.jobscout/jobscout.db` | LinkedIn marks shown in the dashboard and report (read-only) |
+| `JOBSCOUT_PERSONAL_DETAILS` | `~/.jobscout/personal_details.json` | Extra facts for `check_answers` |
 
 ## Your data
 

@@ -13,7 +13,7 @@ def _load_dotenv(path: Path) -> None:
     """Read KEY=VALUE lines from .env (gitignored). Real env vars win."""
     if not path.is_file():
         return
-    for line in path.read_text().splitlines():
+    for line in path.read_text(encoding="utf-8").splitlines():
         line = line.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue
@@ -21,11 +21,27 @@ def _load_dotenv(path: Path) -> None:
         os.environ.setdefault(key.strip(), value.strip().strip("'\""))
 
 
-_load_dotenv(PROJECT_ROOT / ".env")
+# Shared with jobscout: one home for profile, personal details and logs.
+JOBSCOUT_HOME = Path(os.environ.get("JOBSCOUT_HOME", Path.home() / ".jobscout")).expanduser()
 
-# ./data by default. Holds your logged-in browser profile (treat it like a
-# password) and the local application log.
-DATA_DIR = Path(os.environ.get("WELLFOUND_MCP_DATA", PROJECT_ROOT / "data"))
+
+def _local_or_shared(local: Path, shared: Path) -> Path:
+    """Prefer the project-local file when it exists (older setups), else ~/.jobscout."""
+    return local if local.exists() else shared
+
+
+_load_dotenv(PROJECT_ROOT / ".env")
+_load_dotenv(JOBSCOUT_HOME / ".env")
+
+# ./data if it exists, else ~/.jobscout/wellfound. Holds your logged-in browser
+# profile (treat it like a password) and the local application log.
+DATA_DIR = Path(os.environ.get("WELLFOUND_MCP_DATA") or _local_or_shared(PROJECT_ROOT / "data", JOBSCOUT_HOME / "wellfound")).expanduser()
+
+# jobscout's LinkedIn database (read-only here: the dashboard and weekly report
+# include its applied/shortlisted/skipped marks) and its personal details file
+# (used by check_answers alongside profile.md).
+JOBSCOUT_DB = Path(os.environ.get("JOBSCOUT_DB") or JOBSCOUT_HOME / "jobscout.db").expanduser()
+PERSONAL_DETAILS = Path(os.environ.get("JOBSCOUT_PERSONAL_DETAILS") or JOBSCOUT_HOME / "personal_details.json").expanduser()
 PROFILE_DIR = DATA_DIR / "browser-profile"
 DB_PATH = DATA_DIR / "applications.db"
 
@@ -44,9 +60,9 @@ DAILY_START = int(os.environ.get("WELLFOUND_DAILY_START", "5"))
 DAILY_MAX = int(os.environ.get("WELLFOUND_DAILY_LIMIT", "15"))
 
 # Your background and standard answers, used to fill application forms.
-# Copy profile.example.md to profile.md and fill it in. Gitignored, because it
-# holds personal details.
-PROFILE_PATH = Path(os.environ.get("WELLFOUND_PROFILE", PROJECT_ROOT / "profile.md"))
+# ./profile.md if it exists, else ~/.jobscout/profile.md (the one jobscout's
+# skills use). Copy profile.example.md there and fill it in. Never commit it.
+PROFILE_PATH = Path(os.environ.get("WELLFOUND_PROFILE") or _local_or_shared(PROJECT_ROOT / "profile.md", JOBSCOUT_HOME / "profile.md")).expanduser()
 
 # Email alert after each submitted application. Gmail needs an app password
 # (Google Account > Security > App passwords), not your normal password.
