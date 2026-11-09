@@ -1,10 +1,10 @@
 {
   "name": "jobscout",
-  "version": "0.1.0",
-  "description": "Token-frugal LinkedIn job search: an MCP server that drives your own logged-in Chrome, plus a job-hunt skill that ranks the top jobs for your resume.",
+  "version": "0.2.0",
+  "description": "Token-frugal job hunting: jobscout (LinkedIn search via your own Chrome) and hireloop (Wellfound apply, answer fact-checks, email records, dashboard), plus job-hunt and job-apply-cycle skills.",
   "author": { "name": "Kushal Kantharaju" },
   "homepage": "https://github.com/kushalk47/jobscout",
   "repository": "https://github.com/kushalk47/jobscout",
   "license": "Apache-2.0",
-  "keywords": ["jobs", "linkedin", "job-search", "mcp", "resume"]
+  "keywords": ["jobs", "linkedin", "wellfound", "job-search", "mcp", "resume"]
 }
