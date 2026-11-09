@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.pyc
+.ruff_cache/
+.pytest_cache/
+# Private: your logged-in browser profile, application log and personal
+# details. Never commit these. (profile.example.md is the blank template.)
+data/
+*.db
+profile.md
+.env
+.vscode/
+.claude/settings.local.json
