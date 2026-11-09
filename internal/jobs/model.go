@@ -32,6 +32,7 @@ type Detail struct {
 	Employment  string // Full-time | Contract | ...
 	Posted      string
 	Applicants  string
+	Apply       string // "easy" (LinkedIn Easy Apply), the company apply URL, or "" if unknown
 	Description string // structured plain text ("## Heading", "- bullet")
 	FetchedAt   time.Time
 }

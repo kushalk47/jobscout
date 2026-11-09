@@ -35,6 +35,8 @@ type Selectors struct {
 	DetailApplicants  []string `yaml:"detail_applicants" json:"detail_applicants"`
 	DetailTopCard     []string `yaml:"detail_top_card" json:"detail_top_card"` // block with "location · posted · applicants"
 	DetailAboutHeader []string `yaml:"detail_about_header" json:"detail_about_header"`
+	DetailApply       []string `yaml:"detail_apply" json:"detail_apply"`           // link to the company's own apply page
+	DetailEasyApply   []string `yaml:"detail_easy_apply" json:"detail_easy_apply"` // LinkedIn Easy Apply button
 }
 
 // DefaultSelectors lists the signed-in UI first, then older and guest layouts.
@@ -109,6 +111,15 @@ func DefaultSelectors() Selectors {
 		DetailLocation:   []string{".topcard__flavor--bullet"}, // guest; signed-in uses the "·" line
 		DetailPosted:     []string{".posted-time-ago__text"},   // guest
 		DetailApplicants: []string{".num-applicants__caption"}, // guest
+		DetailApply: []string{
+			`a[aria-label*="company website" i]`,
+			`a[href*="/safety/go/"][aria-label*="Apply" i]`,
+			`a[data-tracking-control-name*="apply-link-offsite"]`, // guest
+		},
+		DetailEasyApply: []string{
+			`[aria-label*="Easy Apply" i]`,
+			`button.jobs-apply-button[aria-label*="Easy" i]`,
+		},
 		DetailTopCard: []string{
 			".job-details-jobs-unified-top-card__primary-description-container",
 			".job-details-jobs-unified-top-card__tertiary-description-container",

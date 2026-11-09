@@ -49,6 +49,8 @@ func Open(path string) (*SQLite, error) {
 		db.Close()
 		return nil, fmt.Errorf("creating schema: %w", err)
 	}
+	// v0.2: details.apply (Easy Apply / company URL). Fails harmlessly if present.
+	_, _ = db.Exec(`ALTER TABLE details ADD COLUMN apply TEXT`)
 	return &SQLite{db: db}, nil
 }
 
@@ -110,8 +112,8 @@ func (s *SQLite) MarkedIDs(ctx context.Context) (map[string]jobs.Status, error) 
 func (s *SQLite) GetDetail(ctx context.Context, id string, maxAge time.Duration) (*jobs.Detail, error) {
 	var d jobs.Detail
 	var fetched int64
-	err := s.db.QueryRowContext(ctx, `SELECT id,title,company,location,workplace,employment,posted,applicants,description,fetched_at
-FROM details WHERE id=?`, id).Scan(&d.ID, &d.Title, &d.Company, &d.Location, &d.Workplace, &d.Employment, &d.Posted, &d.Applicants, &d.Description, &fetched)
+	err := s.db.QueryRowContext(ctx, `SELECT id,title,company,location,workplace,employment,posted,applicants,description,fetched_at,COALESCE(apply,'')
+FROM details WHERE id=?`, id).Scan(&d.ID, &d.Title, &d.Company, &d.Location, &d.Workplace, &d.Employment, &d.Posted, &d.Applicants, &d.Description, &fetched, &d.Apply)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -136,12 +138,12 @@ func (s *SQLite) ClearDetails(ctx context.Context) (int64, error) {
 
 func (s *SQLite) SaveDetail(ctx context.Context, d jobs.Detail) error {
 	_, err := s.db.ExecContext(ctx, `
-INSERT INTO details (id,title,company,location,workplace,employment,posted,applicants,description,fetched_at)
-VALUES (?,?,?,?,?,?,?,?,?,?)
+INSERT INTO details (id,title,company,location,workplace,employment,posted,applicants,description,fetched_at,apply)
+VALUES (?,?,?,?,?,?,?,?,?,?,?)
 ON CONFLICT(id) DO UPDATE SET title=excluded.title, company=excluded.company, location=excluded.location,
   workplace=excluded.workplace, employment=excluded.employment, posted=excluded.posted,
-  applicants=excluded.applicants, description=excluded.description, fetched_at=excluded.fetched_at`,
-		d.ID, d.Title, d.Company, d.Location, d.Workplace, d.Employment, d.Posted, d.Applicants, d.Description, d.FetchedAt.Unix())
+  applicants=excluded.applicants, description=excluded.description, fetched_at=excluded.fetched_at, apply=excluded.apply`,
+		d.ID, d.Title, d.Company, d.Location, d.Workplace, d.Employment, d.Posted, d.Applicants, d.Description, d.FetchedAt.Unix(), d.Apply)
 	if err != nil {
 		return err
 	}

@@ -3,6 +3,7 @@ package linkedin
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"regexp"
 	"strings"
 
@@ -294,6 +295,7 @@ func ParseDetail(page, id string, sel Selectors) (jobs.Detail, error) {
 		d.Applicants = applicantsPattern.FindString(v)
 	}
 	d.Location, d.Workplace = splitWorkplace(d.Location)
+	d.Apply = applyTarget(main, sel)
 
 	// Workplace / employment "chips" are short exact labels near the top.
 	// Guest pages list them under "Employment type" below the description.
@@ -545,4 +547,42 @@ func lastElement(n *html.Node) *html.Node {
 		}
 	}
 	return nil
+}
+
+// applyTarget returns "easy" for LinkedIn Easy Apply, else the company's own
+// apply URL (unwrapped from LinkedIn's /safety/go/?url= redirect), else "".
+func applyTarget(main *goquery.Selection, sel Selectors) string {
+	for _, s := range sel.DetailApply {
+		var found string
+		main.Find(s).EachWithBreak(func(_ int, a *goquery.Selection) bool {
+			href, _ := a.Attr("href")
+			found = unwrapApplyURL(href)
+			return found == ""
+		})
+		if found != "" {
+			return found
+		}
+	}
+	if firstSelection(main, sel.DetailEasyApply) != nil {
+		return "easy"
+	}
+	return ""
+}
+
+func unwrapApplyURL(href string) string {
+	u, err := url.Parse(strings.TrimSpace(href))
+	if err != nil || u.Host == "" {
+		return ""
+	}
+	if strings.HasSuffix(u.Host, "linkedin.com") {
+		inner := u.Query().Get("url")
+		if inner == "" {
+			return ""
+		}
+		return unwrapApplyURL(inner)
+	}
+	if u.Scheme != "https" && u.Scheme != "http" {
+		return ""
+	}
+	return u.String()
 }
