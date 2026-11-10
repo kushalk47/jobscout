@@ -5,7 +5,7 @@
     {
       "name": "jobscout",
       "source": "./plugin",
-      "description": "Token-frugal LinkedIn job search MCP server + job-hunt skill."
+      "description": "LinkedIn + Wellfound job search and apply: two MCP servers, job-hunt and job-apply-cycle skills."
     }
   ]
 }

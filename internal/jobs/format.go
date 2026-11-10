@@ -81,6 +81,9 @@ func FormatDetail(d Detail, t Trimmed, full bool) string {
 	if t.Signals != "" {
 		fmt.Fprintf(&b, "signals: %s\n", t.Signals)
 	}
+	if d.Apply != "" {
+		fmt.Fprintf(&b, "apply: %s\n", d.Apply)
+	}
 	if full {
 		b.WriteString(d.Description)
 	} else {

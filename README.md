@@ -1,6 +1,10 @@
 # jobscout
 
-**A lightweight, token-frugal MCP server for finding LinkedIn jobs, plus a Claude skill that ranks the top 20 jobs for your resume.**
+**A lightweight, token-frugal MCP server for finding LinkedIn jobs, plus Claude skills that rank the top jobs for your resume and run the whole find → apply → track cycle.**
+
+The repository holds two MCP servers that share `~/.jobscout/`:
+- **jobscout** (Go, this folder): LinkedIn search, descriptions, scores and the application tracker.
+- **hireloop** ([`hireloop/`](hireloop/README.md), Python): Wellfound search and apply, plus `check_answers` (fact-checks form answers against your profile) and `notify_applied` (email record) for any company career site, a local dashboard and a Sunday report over both.
 
 An unofficial tool. It drives *your own* logged-in Chrome through the Chrome DevTools Protocol: one Go binary, no Python or Node, four tools.
 
@@ -35,6 +39,10 @@ The biggest saving is the funnel itself: Claude screens ~25 tokens per job and r
 
 Statuses: `skipped`, `seen`, `shortlisted`, `applied`, `rejected`, `not_interested`.
 
+`jobs_get` also prints `apply: easy` (LinkedIn Easy Apply) or the company's own apply URL, so the cycle knows which route each job takes.
+
+hireloop's tools are listed in [hireloop/README.md](hireloop/README.md#tools).
+
 ## Install
 
 ```bash
@@ -62,7 +70,22 @@ Debug commands (they print exactly what the model would see): `jobscout-mcp sear
 /plugin marketplace add kushalk47/jobscout
 /plugin install jobscout@jobscout
 ```
-Then ask: *"Find me jobs that fit my resume"* and attach or paste your resume.
+Then ask: *"Find me jobs that fit my resume"* and attach or paste your resume, or *"run my job cycle"* to find, apply and track.
+
+The plugin also starts hireloop with `uvx` (needs [uv](https://docs.astral.sh/uv/)); run `uvx --from "git+https://github.com/kushalk47/jobscout#subdirectory=hireloop" playwright install chromium` once, and `... wellfound-mcp-login` if you use Wellfound. Without uv, hireloop simply doesn't start and the skills skip it.
+
+### Your data
+
+Everything personal stays in `~/.jobscout/` and is never part of this repository:
+
+| File | Holds |
+|---|---|
+| `profile.md` | Skills, experience, targets, hard gates (template: [hireloop/profile.example.md](hireloop/profile.example.md)) |
+| `personal_details.json` | Contact details, CTC, notice, education, resume paths, saved and EEO answers |
+| `lessons.local.md` | Your standing instructions for the apply cycle (resume per stack, portals to skip) |
+| `current_run.md` | The in-progress run |
+| `jobscout.db`, `chrome-profile/`, `wellfound/` | Job database, LinkedIn login, Wellfound login and log |
+| `.env` | hireloop settings (email alerts, auto mode) |
 
 ### Server only (any MCP client)
 
@@ -79,7 +102,8 @@ internal/mcpserver      4 tools → service (the thin "controller")
 internal/jobs           use cases: dedupe, hard filters, trimming, compact output (no LinkedIn knowledge)
 internal/linkedin       adapter: Chrome over CDP, pacing, host guard, selector table, HTML parsing
 internal/store          SQLite (pure Go): cards, cached descriptions, marks
-plugin/                 Claude Code plugin: .mcp.json + skills/job-hunt/SKILL.md
+hireloop/               Python MCP: Wellfound, check_answers, notify_applied, dashboard, weekly report
+plugin/                 Claude Code plugin: .mcp.json (both servers) + skills/job-hunt, skills/job-apply-cycle
 ```
 
 - **Chrome:** jobscout attaches to Chrome on `127.0.0.1:9222`, starting it with the dedicated profile `~/.jobscout/chrome-profile` when needed. It uses one tab and never closes your browser.
@@ -93,6 +117,8 @@ jobscout is not affiliated with LinkedIn. Automating LinkedIn's website is again
 ## Credits
 
 Job-page logic is ported from [prakharagarwal-dev/linkedin-mcp-server](https://github.com/prakharagarwal-dev/linkedin-mcp-server) (Apache-2.0). See [NOTICE](NOTICE).
+
+`hireloop/` comes from [rohxn08/hireloop](https://github.com/rohxn08/hireloop), merged with its history.
 
 ## License
 

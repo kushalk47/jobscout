@@ -2,6 +2,7 @@ package linkedin
 
 import (
 	"errors"
+	"github.com/PuerkitoBio/goquery"
 	"os"
 	"strings"
 	"testing"
@@ -237,7 +238,22 @@ func TestParseSignedDetail(t *testing.T) {
 		d.Posted != "Reposted 1 day ago" || d.Employment != "Full-time" {
 		t.Errorf("got title=%q company=%q loc=%q posted=%q emp=%q", d.Title, d.Company, d.Location, d.Posted, d.Employment)
 	}
+	if want := "https://proofpoint.wd5.myworkdayjobs.com/ProofpointCareers/job/Bengaluru-India---Remote/Backend-Golang-Developer_R14190?source=LinkedIn"; d.Apply != want {
+		t.Errorf("apply = %q, want %q", d.Apply, want)
+	}
+	if got := applyTarget(mustDoc(t, `<main><button aria-label="Easy Apply to Go dev at X">Easy Apply</button></main>`), DefaultSelectors()); got != "easy" {
+		t.Errorf("easy apply = %q", got)
+	}
 	if !strings.Contains(d.Description, "Develop and maintain microservices using Golang") {
 		t.Errorf("description: %.300s", d.Description)
 	}
+}
+
+func mustDoc(t *testing.T, h string) *goquery.Selection {
+	t.Helper()
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(h))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return doc.Selection
 }

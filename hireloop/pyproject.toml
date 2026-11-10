@@ -1,0 +1,27 @@
+[project]
+name = "wellfound-mcp"
+version = "0.1.0"
+description = "A small, token-lean MCP server for finding and applying to jobs on Wellfound, with human approval before every submission."
+readme = "README.md"
+requires-python = ">=3.12,<3.15"
+dependencies = [
+  "mcp>=1.27,<2",
+  "playwright>=1.54,<2",
+]
+
+[project.scripts]
+wellfound-mcp = "wellfound_mcp.server:main"
+wellfound-mcp-login = "wellfound_mcp.login:main"
+wellfound-mcp-test-email = "wellfound_mcp.notify:test_main"
+wellfound-mcp-dashboard = "wellfound_mcp.dashboard:main"
+wellfound-mcp-weekly-report = "wellfound_mcp.weekly:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/wellfound_mcp"]
+
+[dependency-groups]
+dev = ["pytest>=8"]

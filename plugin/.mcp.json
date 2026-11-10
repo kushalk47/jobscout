@@ -3,6 +3,10 @@
     "jobscout": {
       "command": "jobscout-mcp",
       "args": []
+    },
+    "hireloop": {
+      "command": "uvx",
+      "args": ["--from", "git+https://github.com/kushalk47/jobscout#subdirectory=hireloop", "wellfound-mcp"]
     }
   }
 }
